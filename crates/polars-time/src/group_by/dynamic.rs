@@ -19,6 +19,7 @@ struct Wrap<T>(pub T);
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "json-schema", derive(schemars::JsonSchema))]
 pub struct DynamicGroupOptions {
     /// Time or index column.
     pub index_column: PlSmallStr,
@@ -53,6 +54,7 @@ impl Default for DynamicGroupOptions {
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "json-schema", derive(schemars::JsonSchema))]
 pub struct RollingGroupOptions {
     /// Time or index column.
     pub index_column: PlSmallStr,

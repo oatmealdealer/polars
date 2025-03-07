@@ -51,6 +51,7 @@ use crate::RowIndex;
 
 #[derive(Clone, Debug, PartialEq, Hash)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "json-schema", derive(schemars::JsonSchema))]
 pub struct IpcScanOptions;
 
 /// Read Arrows IPC format into a DataFrame

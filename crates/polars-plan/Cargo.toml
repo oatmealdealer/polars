@@ -43,6 +43,7 @@ rayon = { workspace = true }
 recursive = { workspace = true }
 regex = { workspace = true, optional = true }
 serde = { workspace = true, features = ["rc"], optional = true }
+schemars = { workspace = true, optional = true }
 serde_json = { workspace = true, optional = true }
 strum_macros = { workspace = true }
 
@@ -61,6 +62,13 @@ serde = [
   "polars-ops/serde",
   "polars-utils/serde",
   "either/serde",
+]
+json-schema = [
+  "dep:schemars",
+  "polars-time/json-schema",
+  "polars-io/json-schema",
+  "polars-ops/json-schema",
+  "polars-utils/json-schema",
 ]
 streaming = []
 parquet = ["polars-io/parquet", "polars-parquet"]

@@ -44,6 +44,7 @@ use crate::POOL;
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Default, Hash, IntoStaticStr)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "json-schema", derive(schemars::JsonSchema))]
 #[strum(serialize_all = "snake_case")]
 pub enum UniqueKeepStrategy {
     /// Keep the first unique row.
@@ -318,7 +319,7 @@ impl DataFrame {
 
     /// Converts a sequence of columns into a DataFrame, broadcasting length-1
     /// columns to match the other columns.
-    ///  
+    ///
     /// # Safety
     /// Does not check that the column names are unique (which they must be).
     pub unsafe fn new_with_broadcast_no_namecheck(

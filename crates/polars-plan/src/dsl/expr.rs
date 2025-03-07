@@ -13,6 +13,7 @@ use crate::prelude::*;
 
 #[derive(PartialEq, Clone, Hash)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+// #[cfg_attr(feature = "json-schema", derive(schemars::JsonSchema))]
 pub enum AggExpr {
     Min {
         input: Arc<Expr>,
@@ -71,6 +72,7 @@ impl AsRef<Expr> for AggExpr {
 #[derive(Clone, PartialEq)]
 #[must_use]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+// #[cfg_attr(feature = "json-schema", derive(schemars::JsonSchema))]
 pub enum Expr {
     Alias(Arc<Expr>, PlSmallStr),
     Column(PlSmallStr),
@@ -345,6 +347,7 @@ impl Default for Expr {
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+// #[cfg_attr(feature = "json-schema", derive(schemars::JsonSchema))]
 
 pub enum Excluded {
     Name(PlSmallStr),
@@ -373,6 +376,7 @@ impl Expr {
 
 #[derive(Copy, Clone, PartialEq, Eq, Hash)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "json-schema", derive(schemars::JsonSchema))]
 pub enum Operator {
     Eq,
     EqValidity,

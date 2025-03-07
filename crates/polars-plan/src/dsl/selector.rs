@@ -7,6 +7,7 @@ use super::*;
 
 #[derive(Clone, PartialEq, Hash, Debug, Eq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+// #[cfg_attr(feature = "json-schema", derive(schemars::JsonSchema))]
 pub enum Selector {
     Add(Box<Selector>, Box<Selector>),
     Sub(Box<Selector>, Box<Selector>),

@@ -37,6 +37,7 @@ use serde::{Deserialize, Serialize};
 /// The set of all implementations of the sealed trait [`NativeType`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "json-schema", derive(schemars::JsonSchema))]
 pub enum PrimitiveType {
     /// A signed 8-bit integer.
     Int8,

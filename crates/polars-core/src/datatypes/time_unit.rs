@@ -5,6 +5,7 @@ use super::*;
     any(feature = "serde-lazy", feature = "serde"),
     derive(Serialize, Deserialize)
 )]
+#[cfg_attr(feature = "json-schema", derive(schemars::JsonSchema))]
 pub enum TimeUnit {
     Nanoseconds,
     Microseconds,

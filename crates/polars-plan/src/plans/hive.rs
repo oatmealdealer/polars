@@ -7,6 +7,7 @@ use polars_io::prelude::schema_inference::{finish_infer_field_schema, infer_fiel
 use serde::{Deserialize, Serialize};
 
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+// #[cfg_attr(feature = "json-schema", derive(schemars::JsonSchema))]
 #[derive(Debug, Clone)]
 pub struct HivePartitions {
     /// Single value Series that can be used to run the predicate against.

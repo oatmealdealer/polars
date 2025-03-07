@@ -28,6 +28,7 @@ pub type FileCount = u32;
 
 #[derive(Clone, Debug, PartialEq, Eq, Default, Hash)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+// #[cfg_attr(feature = "json-schema", derive(schemars::JsonSchema))]
 /// Generic options for all file types.
 pub struct FileScanOptions {
     pub slice: Option<(i64, usize)>,
@@ -44,6 +45,7 @@ pub struct FileScanOptions {
 
 #[derive(Clone, Debug, Copy, Default, Eq, PartialEq, Hash)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "json-schema", derive(schemars::JsonSchema))]
 pub struct UnionOptions {
     pub slice: Option<(i64, usize)>,
     pub parallel: bool,
@@ -56,12 +58,14 @@ pub struct UnionOptions {
 
 #[derive(Clone, Debug, Copy, Default, Eq, PartialEq, Hash)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "json-schema", derive(schemars::JsonSchema))]
 pub struct HConcatOptions {
     pub parallel: bool,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Default, Hash)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "json-schema", derive(schemars::JsonSchema))]
 pub struct GroupbyOptions {
     #[cfg(feature = "dynamic_group_by")]
     pub dynamic: Option<DynamicGroupOptions>,
@@ -73,6 +77,7 @@ pub struct GroupbyOptions {
 
 #[derive(Clone, Debug, Eq, PartialEq, Default, Hash)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+// #[cfg_attr(feature = "json-schema", derive(schemars::JsonSchema))]
 pub struct DistinctOptionsDSL {
     /// Subset of columns that will be taken into account.
     pub subset: Option<Vec<Selector>>,
@@ -103,6 +108,7 @@ pub struct DistinctOptionsIR {
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "json-schema", derive(schemars::JsonSchema))]
 pub enum ApplyOptions {
     /// Collect groups to a list and apply the function over the groups.
     /// This can be important in aggregation context.
@@ -119,6 +125,7 @@ pub enum ApplyOptions {
 // a boolean that can only be set to `false` safely
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Hash)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "json-schema", derive(schemars::JsonSchema))]
 pub struct UnsafeBool(bool);
 impl Default for UnsafeBool {
     fn default() -> Self {
@@ -181,6 +188,7 @@ impl Default for FunctionFlags {
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Hash)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+// #[cfg_attr(feature = "json-schema", derive(schemars::JsonSchema))]
 pub struct FunctionOptions {
     /// Collect groups to a list and apply the function over the groups.
     /// This can be important in aggregation context.
@@ -242,6 +250,7 @@ pub struct LogicalPlanUdfOptions {
 
 #[derive(Clone, PartialEq, Eq, Debug, Default)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+// #[cfg_attr(feature = "json-schema", derive(schemars::JsonSchema))]
 #[cfg(feature = "python")]
 pub struct PythonOptions {
     /// A function that returns a Python Generator.
@@ -264,6 +273,7 @@ pub struct PythonOptions {
 
 #[derive(Clone, PartialEq, Eq, Debug, Default)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "json-schema", derive(schemars::JsonSchema))]
 pub enum PythonScanSource {
     Pyarrow,
     Cuda,
@@ -283,12 +293,14 @@ pub enum PythonPredicate {
 
 #[derive(Clone, PartialEq, Eq, Debug, Default, Hash)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "json-schema", derive(schemars::JsonSchema))]
 pub struct AnonymousScanOptions {
     pub skip_rows: Option<usize>,
     pub fmt_str: &'static str,
 }
 
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+// #[cfg_attr(feature = "json-schema", derive(schemars::JsonSchema))]
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub enum SinkType {
     Memory,
@@ -312,6 +324,7 @@ impl SinkType {
 }
 
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "json-schema", derive(schemars::JsonSchema))]
 #[derive(Clone, Debug)]
 pub struct FileSinkOptions {
     pub path: Arc<PathBuf>,
@@ -319,6 +332,7 @@ pub struct FileSinkOptions {
 }
 
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "json-schema", derive(schemars::JsonSchema))]
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub enum FileType {
     #[cfg(feature = "parquet")]
@@ -332,6 +346,7 @@ pub enum FileType {
 }
 
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "json-schema", derive(schemars::JsonSchema))]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct ProjectionOptions {
     pub run_parallel: bool,
@@ -364,6 +379,7 @@ impl ProjectionOptions {
 
 // Arguments given to `concat`. Differs from `UnionOptions` as the latter is IR state.
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "json-schema", derive(schemars::JsonSchema))]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct UnionArgs {
     pub parallel: bool,
@@ -401,6 +417,7 @@ impl From<UnionArgs> for UnionOptions {
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+// #[cfg_attr(feature = "json-schema", derive(schemars::JsonSchema))]
 #[cfg(feature = "json")]
 pub struct NDJsonReadOptions {
     pub n_threads: Option<usize>,

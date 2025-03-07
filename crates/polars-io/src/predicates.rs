@@ -50,6 +50,7 @@ pub fn apply_predicate(
 /// - Maximum value
 #[derive(Debug, Clone)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+// #[cfg_attr(feature = "json-schema", derive(schemars::JsonSchema))]
 pub struct ColumnStats {
     field: Field,
     // Each Series contains the stats for each row group.
@@ -206,6 +207,7 @@ fn use_min_max(dtype: &DataType) -> bool {
 
 /// A collection of column stats with a known schema.
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+// #[cfg_attr(feature = "json-schema", derive(schemars::JsonSchema))]
 #[derive(Debug, Clone)]
 pub struct BatchStats {
     schema: SchemaRef,

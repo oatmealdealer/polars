@@ -18,6 +18,7 @@ pub static DTYPE_ENUM_VALUES: &str = "_PL_ENUM_VALUES";
 /// to be serialized.
 #[derive(Debug, Clone, Eq, PartialEq, Hash, Default)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "json-schema", derive(schemars::JsonSchema))]
 pub struct Field {
     /// Its name
     pub name: PlSmallStr,

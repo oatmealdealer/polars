@@ -4,6 +4,7 @@ use super::*;
 
 #[cfg(feature = "python")]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+// #[cfg_attr(feature = "json-schema", derive(schemars::JsonSchema))]
 #[derive(Clone)]
 pub struct OpaquePythonUdf {
     pub function: PythonFunction,
@@ -19,6 +20,7 @@ pub struct OpaquePythonUdf {
 // Except for Opaque functions, this only has the DSL name of the function.
 #[derive(Clone, IntoStaticStr)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+// #[cfg_attr(feature = "json-schema", derive(schemars::JsonSchema))]
 #[strum(serialize_all = "SCREAMING_SNAKE_CASE")]
 pub enum DslFunction {
     // Function that is already converted to IR.
@@ -53,6 +55,7 @@ pub enum DslFunction {
 
 #[derive(Clone)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+// #[cfg_attr(feature = "json-schema", derive(schemars::JsonSchema))]
 pub struct DropFunction {
     /// Columns that are going to be dropped
     pub(crate) to_drop: Vec<Selector>,
@@ -63,6 +66,7 @@ pub struct DropFunction {
 
 #[derive(Clone)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+// #[cfg_attr(feature = "json-schema", derive(schemars::JsonSchema))]
 pub enum StatsFunction {
     Var {
         ddof: u8,

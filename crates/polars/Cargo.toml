@@ -65,6 +65,7 @@ default = [
 ndarray = ["polars-core/ndarray"]
 # serde support for dataframes and series
 serde = ["polars-core/serde", "polars-utils/serde"]
+json-schema = ["polars-core/json-schema", "polars-utils/json-schema"]
 serde-lazy = [
   "polars-core/serde-lazy",
   "polars-lazy?/serde",
@@ -72,6 +73,13 @@ serde-lazy = [
   "polars-io?/serde",
   "polars-ops?/serde",
   "polars-utils/serde",
+]
+json-schema-lazy = [
+  "polars-lazy?/json-schema",
+  "polars-time?/json-schema",
+  "polars-io?/json-schema",
+  "polars-ops?/json-schema",
+  "polars-utils/json-schema",
 ]
 parquet = ["polars-io", "polars-lazy?/parquet", "polars-io/parquet", "polars-sql?/parquet"]
 async = ["polars-lazy?/async"]

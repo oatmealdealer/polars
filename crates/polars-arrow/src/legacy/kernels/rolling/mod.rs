@@ -26,6 +26,7 @@ type Len = usize;
 
 #[derive(Clone, Debug, PartialEq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "json-schema", derive(schemars::JsonSchema))]
 pub enum RollingFnParams {
     Quantile(RollingQuantileParams),
     Var(RollingVarParams),
@@ -85,12 +86,14 @@ where
 // Parameters allowed for rolling operations.
 #[derive(Clone, Copy, Debug, PartialEq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "json-schema", derive(schemars::JsonSchema))]
 pub struct RollingVarParams {
     pub ddof: u8,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "json-schema", derive(schemars::JsonSchema))]
 pub struct RollingQuantileParams {
     pub prob: f64,
     pub method: QuantileMethod,

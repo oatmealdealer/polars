@@ -26,6 +26,7 @@ rand = { workspace = true }
 raw-cpuid = { workspace = true }
 rayon = { workspace = true }
 serde = { workspace = true, optional = true }
+schemars = { workspace = true, optional = true }
 stacker = { workspace = true }
 sysinfo = { version = "0.32", default-features = false, features = ["system"], optional = true }
 
@@ -41,4 +42,5 @@ bigidx = []
 nightly = []
 ir_serde = ["serde"]
 serde = ["dep:serde", "serde/derive"]
+json-schema = ["dep:schemars"]
 python = ["pyo3"]

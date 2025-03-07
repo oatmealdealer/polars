@@ -7,6 +7,7 @@ use strum_macros::IntoStaticStr;
 
 #[derive(Copy, Clone, Debug, Hash, Eq, PartialEq, Default, IntoStaticStr)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "json-schema", derive(schemars::JsonSchema))]
 #[strum(serialize_all = "snake_case")]
 pub enum ClosedInterval {
     #[default]

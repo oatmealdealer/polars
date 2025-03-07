@@ -7,6 +7,7 @@ use crate::prelude::*;
 
 #[derive(Copy, Clone, Debug, Hash, Eq, PartialEq, Default)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "json-schema", derive(schemars::JsonSchema))]
 pub enum SearchSortedSide {
     #[default]
     Any,

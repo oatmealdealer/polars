@@ -27,6 +27,7 @@ polars-error = { workspace = true }
 polars-schema = { workspace = true }
 polars-utils = { workspace = true }
 serde = { workspace = true, optional = true }
+schemars = { workspace = true, optional = true }
 simdutf8 = { workspace = true }
 
 ethnum = { workspace = true }
@@ -144,6 +145,7 @@ compute = [
   "compute_temporal",
 ]
 serde = ["dep:serde", "polars-schema/serde", "polars-utils/serde"]
+json-schema = ["dep:schemars", "polars-schema/json-schema", "polars-utils/json-schema"]
 simd = []
 
 # polars-arrow

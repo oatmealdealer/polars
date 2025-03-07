@@ -206,6 +206,7 @@ impl_polars_datatype_pass_dtype!(DurationType, DataType::Unknown(UnknownKind::An
 impl_polars_datatype_pass_dtype!(CategoricalType, DataType::Unknown(UnknownKind::Any), PrimitiveArray<u32>, 'a, u32, u32, u32, FalseT);
 
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "json-schema", derive(schemars::JsonSchema))]
 pub struct ListType {}
 unsafe impl PolarsDataType for ListType {
     type Physical<'a> = Box<dyn Array>;

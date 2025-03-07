@@ -14,6 +14,7 @@ use crate::using_string_cache;
     any(feature = "serde-lazy", feature = "serde"),
     derive(Serialize, Deserialize)
 )]
+#[cfg_attr(feature = "json-schema", derive(schemars::JsonSchema))]
 pub enum CategoricalOrdering {
     #[default]
     Physical,

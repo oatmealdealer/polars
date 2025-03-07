@@ -43,6 +43,7 @@ regex = { workspace = true }
 reqwest = { workspace = true, optional = true }
 ryu = { workspace = true, optional = true }
 serde = { workspace = true, features = ["rc"], optional = true }
+schemars = { workspace = true, optional = true }
 serde_json = { version = "1", optional = true }
 simd-json = { workspace = true, optional = true }
 simdutf8 = { workspace = true, optional = true }
@@ -69,6 +70,7 @@ json = [
   "csv",
 ]
 serde = ["dep:serde", "polars-core/serde-lazy", "polars-parquet/serde", "polars-utils/serde"]
+json-schema = ["dep:schemars", "polars-parquet/json-schema", "polars-utils/json-schema"]
 # support for arrows ipc file parsing
 ipc = ["arrow/io_ipc", "arrow/io_ipc_compression"]
 # support for arrows streaming ipc file parsing

@@ -20,6 +20,17 @@ type Inner = compact_str::CompactString;
 )]
 pub struct PlSmallStr(Inner);
 
+#[cfg(feature = "json-schema")]
+impl schemars::JsonSchema for PlSmallStr {
+    fn schema_name() -> String {
+        "PlSmallStr".to_owned()
+    }
+    fn json_schema(_: &mut schemars::r#gen::SchemaGenerator) -> schemars::schema::Schema {
+        schemars::schema::Schema::Bool(true)
+    }
+}
+
+
 impl PlSmallStr {
     pub const EMPTY: Self = Self::from_static("");
     pub const EMPTY_REF: &'static Self = &Self::from_static("");

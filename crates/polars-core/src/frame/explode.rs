@@ -21,6 +21,7 @@ fn get_exploded(series: &Series) -> PolarsResult<(Series, OffsetsBuffer<i64>)> {
 /// Arguments for `LazyFrame::unpivot` function
 #[derive(Clone, Default, Debug, PartialEq, Eq, Hash)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "json-schema", derive(schemars::JsonSchema))]
 pub struct UnpivotArgsIR {
     pub on: Vec<PlSmallStr>,
     pub index: Vec<PlSmallStr>,

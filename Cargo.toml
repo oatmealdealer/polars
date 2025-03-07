@@ -73,6 +73,7 @@ regex-syntax = "0.8.5"
 reqwest = { version = "0.12", default-features = false }
 ryu = "1.0.13"
 serde = { version = "1.0.188", features = ["derive", "rc"] }
+schemars = {version = "0.8.21"}
 serde_json = "1"
 simd-json = { version = "0.14", features = ["known-key"] }
 simdutf8 = "0.1.4"
@@ -131,6 +132,7 @@ features = [
   "compute_boolean",
   "compute_boolean_kleene",
   "compute_comparison",
+  "json-schema"
 ]
 
 [patch.crates-io]

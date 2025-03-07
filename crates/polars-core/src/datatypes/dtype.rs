@@ -44,6 +44,7 @@ impl IntoMetadata for Metadata {
     any(feature = "serde", feature = "serde-lazy"),
     derive(Serialize, Deserialize)
 )]
+#[cfg_attr(feature = "json-schema", derive(schemars::JsonSchema))]
 pub enum UnknownKind {
     // Hold the value to determine the concrete size.
     Int(i128),

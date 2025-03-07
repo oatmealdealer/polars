@@ -22,6 +22,7 @@ hex = { workspace = true }
 once_cell = { workspace = true }
 rand = { workspace = true }
 serde = { workspace = true }
+schemars = { workspace = true, optional = true }
 serde_json = { workspace = true }
 sqlparser = { workspace = true }
 
@@ -43,4 +44,5 @@ list_eval = ["polars-lazy/list_eval"]
 parquet = ["polars-lazy/parquet"]
 semi_anti_join = ["polars-lazy/semi_anti_join"]
 serde = ["polars-utils/serde"]
+json-schema = ["polars-utils/json-schema"]
 timezones = ["polars-lazy/timezones"]

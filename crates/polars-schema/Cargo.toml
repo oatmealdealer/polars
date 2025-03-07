@@ -13,10 +13,11 @@ indexmap = { workspace = true }
 polars-error = { workspace = true }
 polars-utils = { workspace = true }
 serde = { workspace = true, optional = true }
-
+schemars = { workspace = true, optional = true }
 [build-dependencies]
 version_check = { workspace = true }
 
 [features]
 nightly = []
 serde = ["dep:serde", "serde/derive", "polars-utils/serde"]
+json-schema = ["dep:schemars", "polars-utils/json-schema"]

@@ -5,6 +5,7 @@ use crate::{map, map_as_slice};
 
 #[derive(Clone, Copy, Eq, PartialEq, Hash, Debug)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+// #[cfg_attr(feature = "json-schema", derive(schemars::JsonSchema))]
 pub enum ArrayFunction {
     Min,
     Max,

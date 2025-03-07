@@ -3006,6 +3006,7 @@ dependencies = [
  "sample-arrow2",
  "sample-std",
  "sample-test",
+ "schemars",
  "serde",
  "simdutf8",
  "streaming-iterator",
@@ -3079,6 +3080,7 @@ dependencies = [
  "rand_distr",
  "rayon",
  "regex",
+ "schemars",
  "serde",
  "serde_json",
  "strum_macros",
@@ -3196,6 +3198,7 @@ dependencies = [
  "regex",
  "reqwest",
  "ryu",
+ "schemars",
  "serde",
  "serde_json",
  "simd-json",
@@ -3307,6 +3310,7 @@ dependencies = [
  "rayon",
  "regex",
  "regex-syntax 0.8.5",
+ "schemars",
  "serde",
  "serde_json",
  "strum_macros",
@@ -3337,6 +3341,7 @@ dependencies = [
  "polars-parquet-format",
  "polars-utils",
  "rand",
+ "schemars",
  "serde",
  "simdutf8",
  "snap",
@@ -3413,6 +3418,7 @@ dependencies = [
  "rayon",
  "recursive",
  "regex",
+ "schemars",
  "serde",
  "serde_json",
  "strum_macros",
@@ -3474,6 +3480,7 @@ dependencies = [
  "indexmap",
  "polars-error",
  "polars-utils",
+ "schemars",
  "serde",
  "version_check",
 ]
@@ -3493,6 +3500,7 @@ dependencies = [
  "polars-time",
  "polars-utils",
  "rand",
+ "schemars",
  "serde",
  "serde_json",
  "sqlparser",
@@ -3543,6 +3551,7 @@ dependencies = [
  "polars-ops",
  "polars-utils",
  "regex",
+ "schemars",
  "serde",
  "strum_macros",
 ]
@@ -3566,6 +3575,7 @@ dependencies = [
  "rand",
  "raw-cpuid",
  "rayon",
+ "schemars",
  "serde",
  "stacker",
  "sysinfo",
@@ -4304,6 +4314,30 @@ dependencies = [
 ]
 
 [[package]]
+name = "schemars"
+version = "0.8.21"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "09c024468a378b7e36765cd36702b7a90cc3cba11654f6685c8f233408e89e92"
+dependencies = [
+ "dyn-clone",
+ "schemars_derive",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "schemars_derive"
+version = "0.8.21"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b1eee588578aff73f856ab961cd2f79e36bc45d7ded33a7562adba4667aecc0e"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "serde_derive_internals",
+ "syn 2.0.90",
+]
+
+[[package]]
 name = "scopeguard"
 version = "1.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4398,6 +4432,17 @@ name = "serde_derive"
 version = "1.0.215"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ad1e866f866923f252f05c889987993144fb74e722403468a4ebd70c3cd756c0"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.90",
+]
+
+[[package]]
+name = "serde_derive_internals"
+version = "0.29.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "18d26a20a969b9e3fdf2fc2d9f21eda6c40e2de84c9408bb5d3b05d499aae711"
 dependencies = [
  "proc-macro2",
  "quote",

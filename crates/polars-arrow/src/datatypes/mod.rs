@@ -30,6 +30,7 @@ pub(crate) type Extension = Option<(PlSmallStr, Option<PlSmallStr>)>;
 /// Use `to_logical_type` to desugar such type and return its corresponding logical type.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Default)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "json-schema", derive(schemars::JsonSchema))]
 pub enum ArrowDataType {
     /// Null type
     #[default]
@@ -179,6 +180,7 @@ pub enum ArrowDataType {
 /// Mode of [`ArrowDataType::Union`]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "json-schema", derive(schemars::JsonSchema))]
 pub enum UnionMode {
     /// Dense union
     Dense,
@@ -211,6 +213,7 @@ impl UnionMode {
 /// The time units defined in Arrow.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "json-schema", derive(schemars::JsonSchema))]
 pub enum TimeUnit {
     /// Time in seconds.
     Second,
@@ -225,6 +228,7 @@ pub enum TimeUnit {
 /// Interval units defined in Arrow
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "json-schema", derive(schemars::JsonSchema))]
 pub enum IntervalUnit {
     /// The number of elapsed whole months.
     YearMonth,

@@ -7,6 +7,7 @@ use super::*;
 
 #[derive(Clone, Eq, PartialEq, Hash, Debug)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+// #[cfg_attr(feature = "json-schema", derive(schemars::JsonSchema))]
 pub enum ListToStructArgs {
     FixedWidth(Arc<[PlSmallStr]>),
     InferWidth {
@@ -19,6 +20,7 @@ pub enum ListToStructArgs {
 
 #[derive(Clone, Eq, PartialEq, Hash, Debug)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "json-schema", derive(schemars::JsonSchema))]
 pub enum ListToStructWidthStrategy {
     FirstNonNull,
     MaxWidth,

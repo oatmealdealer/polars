@@ -29,6 +29,7 @@ use crate::windows::calendar::{is_leap_year, DAYS_PER_MONTH};
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "json-schema", derive(schemars::JsonSchema))]
 pub struct Duration {
     // the number of months for the duration
     months: i64,

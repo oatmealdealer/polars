@@ -9,6 +9,7 @@ use serde::{Deserialize, Serialize};
 pub use variance::*;
 
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "json-schema", derive(schemars::JsonSchema))]
 #[derive(Debug, Copy, Clone, PartialEq)]
 #[must_use]
 pub struct EWMOptions {

@@ -36,6 +36,7 @@ rayon = { workspace = true }
 regex = { workspace = true, optional = true }
 # activate if you want serde support for Series and DataFrames
 serde = { workspace = true, optional = true }
+schemars = { workspace = true, optional = true }
 serde_json = { workspace = true, optional = true }
 strum_macros = { workspace = true }
 thiserror = { workspace = true }
@@ -123,6 +124,7 @@ bigidx = ["arrow/bigidx", "polars-utils/bigidx"]
 python = []
 
 serde = ["dep:serde", "bitflags/serde", "polars-schema/serde", "polars-utils/serde"]
+json-schema = ["dep:schemars", "polars-schema/json-schema", "polars-utils/json-schema"]
 serde-lazy = ["serde", "arrow/serde", "indexmap/serde", "chrono/serde"]
 
 docs-selection = [

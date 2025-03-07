@@ -54,6 +54,7 @@ pub use crate::parquet::{fallible_streaming_iterator, FallibleStreamingIterator}
 /// The statistics to write
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "json-schema", derive(schemars::JsonSchema))]
 pub struct StatisticsOptions {
     pub min_value: bool,
     pub max_value: bool,

@@ -5,6 +5,7 @@ use polars_core::export::num;
 use super::*;
 
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "json-schema", derive(schemars::JsonSchema))]
 #[derive(Clone, Copy, PartialEq, Debug, Eq, Hash)]
 pub enum TrigonometricFunction {
     Cos,

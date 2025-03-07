@@ -13,6 +13,7 @@ use crate::prelude::*;
 
 #[derive(Clone, PartialEq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+// #[cfg_attr(feature = "json-schema", derive(schemars::JsonSchema))]
 pub enum LiteralValue {
     Null,
     /// A binary true or false.

@@ -43,6 +43,7 @@ pub fn to_sql_interface_err(err: impl Display) -> PolarsError {
 }
 
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "json-schema", derive(schemars::JsonSchema))]
 #[derive(Clone, Copy, PartialEq, Debug, Eq, Hash)]
 /// Categorises the type of (allowed) subquery constraint
 pub enum SubqueryRestriction {

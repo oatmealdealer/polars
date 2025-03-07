@@ -13,6 +13,7 @@ use super::*;
 
 #[derive(Clone, Debug, IntoStaticStr)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+// #[cfg_attr(feature = "json-schema", derive(schemars::JsonSchema))]
 pub enum FileScan {
     #[cfg(feature = "csv")]
     Csv {

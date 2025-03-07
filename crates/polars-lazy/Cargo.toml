@@ -264,6 +264,14 @@ serde = [
   "polars-ops/serde",
   "polars-utils/serde",
 ]
+json-schema = [
+  "polars-plan/json-schema",
+  "polars-core/json-schema",
+  "polars-time?/json-schema",
+  "polars-io/json-schema",
+  "polars-ops/json-schema",
+  "polars-utils/json-schema",
+]
 fused = ["polars-plan/fused", "polars-ops/fused"]
 list_sets = ["polars-plan/list_sets", "polars-ops/list_sets"]
 list_any_all = ["polars-ops/list_any_all", "polars-plan/list_any_all"]
