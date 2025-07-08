@@ -74,6 +74,15 @@ serde-lazy = [
   "polars-ops?/serde",
   "polars-utils/serde",
 ]
+dsl-schema = [
+  "polars-core/dsl-schema",
+  "polars-io?/dsl-schema",
+  "polars-ops?/dsl-schema",
+  "polars-parquet/dsl-schema",
+  "polars-plan?/dsl-schema",
+  "polars-time?/dsl-schema",
+  "polars-utils/dsl-schema"
+]
 parquet = ["polars-io", "polars-lazy?/parquet", "polars-io/parquet", "polars-sql?/parquet", "new_streaming"]
 async = ["polars-lazy?/async"]
 cloud = ["polars-lazy?/cloud", "polars-io/cloud"]
