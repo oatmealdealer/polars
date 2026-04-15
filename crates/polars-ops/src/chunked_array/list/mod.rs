@@ -1,11 +1,8 @@
 use polars_core::prelude::*;
 
-#[cfg(feature = "list_any_all")]
-mod any_all;
 mod count;
 mod dispersion;
-#[cfg(feature = "hash")]
-pub(crate) mod hash;
+mod get;
 mod min_max;
 mod namespace;
 #[cfg(feature = "list_sets")]
@@ -18,6 +15,7 @@ mod to_struct;
 pub use count::*;
 #[cfg(not(feature = "list_count"))]
 use count::*;
+pub use get::*;
 pub use namespace::*;
 #[cfg(feature = "list_sets")]
 pub use sets::*;

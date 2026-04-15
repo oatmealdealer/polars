@@ -128,7 +128,7 @@ impl ArrayChunked {
         let arr = FixedSizeListArray::new_null(
             ArrowDataType::FixedSizeList(
                 Box::new(ArrowField::new(
-                    PlSmallStr::from_static("item"),
+                    LIST_VALUES_NAME,
                     inner_dtype.to_physical().to_arrow(CompatLevel::newest()),
                     true,
                 )),
@@ -154,7 +154,7 @@ impl ChunkFull<&Series> for ArrayChunked {
         let dtype = value.dtype();
         let arrow_dtype = ArrowDataType::FixedSizeList(
             Box::new(ArrowField::new(
-                PlSmallStr::from_static("item"),
+                LIST_VALUES_NAME,
                 dtype.to_physical().to_arrow(CompatLevel::newest()),
                 true,
             )),
@@ -189,7 +189,7 @@ impl ListChunked {
     ) -> ListChunked {
         let arr: ListArray<i64> = ListArray::new_null(
             ArrowDataType::LargeList(Box::new(ArrowField::new(
-                PlSmallStr::from_static("item"),
+                LIST_VALUES_NAME,
                 inner_dtype.to_physical().to_arrow(CompatLevel::newest()),
                 true,
             ))),
@@ -220,17 +220,25 @@ impl<T: PolarsObject> ChunkFull<T> for ObjectChunked<T> {
     where
         Self: Sized,
     {
-        let mut ca: Self = (0..length).map(|_| Some(value.clone())).collect();
-        ca.rename(name);
-        ca
+        use crate::chunked_array::object::registry::run_with_gil;
+
+        run_with_gil(|| {
+            let mut ca: Self = (0..length).map(|_| Some(value.clone())).collect();
+            ca.rename(name);
+            ca
+        })
     }
 }
 
 #[cfg(feature = "object")]
 impl<T: PolarsObject> ChunkFullNull for ObjectChunked<T> {
     fn full_null(name: PlSmallStr, length: usize) -> ObjectChunked<T> {
-        let mut ca: Self = (0..length).map(|_| None).collect();
-        ca.rename(name);
-        ca
+        use crate::chunked_array::object::registry::run_with_gil;
+
+        run_with_gil(|| {
+            let mut ca: Self = (0..length).map(|_| None).collect();
+            ca.rename(name);
+            ca
+        })
     }
 }

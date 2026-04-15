@@ -34,11 +34,13 @@ bitflags! {
         const ROW_ESTIMATE = 1 << 13;
         /// Replace simple projections with a faster inlined projection that skips the expression engine.
         const FAST_PROJECTION = 1 << 14;
-        /// Collapse slower joins with filters into faster joins.
-        const COLLAPSE_JOINS = 1 << 15;
         /// Check if operations are order dependent and unset maintaining_order if
         /// the order would not be observed.
-        const CHECK_ORDER_OBSERVE = 1 << 16;
+        const CHECK_ORDER_OBSERVE = 1 << 15;
+        /// Collapse consecutive sort nodes and pull them up through selecting nodes.
+        const SORT_COLLAPSE = 1 << 16;
+        /// Is the query going to run on the GPU engine.
+        const GPU = 1 << 17;
     }
 }
 
@@ -53,10 +55,6 @@ impl OptFlags {
 
     pub fn cluster_with_columns(&self) -> bool {
         self.contains(OptFlags::CLUSTER_WITH_COLUMNS)
-    }
-
-    pub fn collapse_joins(&self) -> bool {
-        self.contains(OptFlags::COLLAPSE_JOINS)
     }
 
     pub fn predicate_pushdown(&self) -> bool {
@@ -78,11 +76,14 @@ impl OptFlags {
     pub fn fast_projection(&self) -> bool {
         self.contains(OptFlags::FAST_PROJECTION)
     }
+    pub fn gpu(&self) -> bool {
+        self.contains(OptFlags::GPU)
+    }
 }
 
 impl Default for OptFlags {
     fn default() -> Self {
-        Self::from_bits_truncate(u32::MAX) & !Self::NEW_STREAMING & !Self::EAGER
+        Self::from_bits_truncate(u32::MAX) & !Self::NEW_STREAMING & !Self::EAGER & !Self::GPU
     }
 }
 

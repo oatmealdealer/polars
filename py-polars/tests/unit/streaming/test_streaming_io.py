@@ -10,6 +10,8 @@ from polars.testing import assert_frame_equal
 if TYPE_CHECKING:
     from pathlib import Path
 
+    from tests.conftest import PlMonkeyPatch
+
 pytestmark = pytest.mark.xdist_group("streaming")
 
 
@@ -59,10 +61,9 @@ def test_sink_parquet(io_files_path: Path, tmp_path: Path) -> None:
     df_scanned = pl.scan_parquet(file)
     df_scanned.sink_parquet(file_path)
 
-    with pl.StringCache():
-        result = pl.read_parquet(file_path)
-        df_read = pl.read_parquet(file)
-        assert_frame_equal(result, df_read)
+    result = pl.read_parquet(file_path)
+    df_read = pl.read_parquet(file)
+    assert_frame_equal(result, df_read)
 
 
 @pytest.mark.write_disk
@@ -101,10 +102,9 @@ def test_sink_ipc(io_files_path: Path, tmp_path: Path) -> None:
     df_scanned = pl.scan_parquet(file)
     df_scanned.sink_ipc(file_path)
 
-    with pl.StringCache():
-        result = pl.read_ipc(file_path)
-        df_read = pl.read_parquet(file)
-        assert_frame_equal(result, df_read)
+    result = pl.read_ipc(file_path)
+    df_read = pl.read_parquet(file)
+    assert_frame_equal(result, df_read)
 
 
 @pytest.mark.write_disk
@@ -114,10 +114,9 @@ def test_sink_csv(io_files_path: Path, tmp_path: Path) -> None:
 
     pl.scan_parquet(source_file).sink_csv(target_file)
 
-    with pl.StringCache():
-        source_data = pl.read_parquet(source_file)
-        target_data = pl.read_csv(target_file)
-        assert_frame_equal(target_data, source_data)
+    source_data = pl.read_parquet(source_file)
+    target_data = pl.read_csv(target_file)
+    assert_frame_equal(target_data, source_data)
 
 
 @pytest.mark.write_disk
@@ -203,11 +202,11 @@ def test_sink_ndjson_should_write_same_data(
 @pytest.mark.write_disk
 @pytest.mark.parametrize("streaming", [False, True])
 def test_parquet_eq_statistics(
-    monkeypatch: Any, capfd: Any, tmp_path: Path, streaming: bool
+    plmonkeypatch: PlMonkeyPatch, capfd: Any, tmp_path: Path, streaming: bool
 ) -> None:
     tmp_path.mkdir(exist_ok=True)
 
-    monkeypatch.setenv("POLARS_VERBOSE", "1")
+    plmonkeypatch.setenv("POLARS_VERBOSE", "1")
 
     df = pl.DataFrame({"idx": pl.arange(100, 200, eager=True)}).with_columns(
         (pl.col("idx") // 25).alias("part")

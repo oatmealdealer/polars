@@ -24,6 +24,7 @@ pub(crate) mod options;
 pub mod python;
 #[cfg(feature = "python")]
 pub use python::*;
+pub mod prune;
 mod schema;
 pub mod visitor;
 
@@ -39,12 +40,3 @@ pub use iterator::*;
 pub use lit::*;
 pub use optimizer::*;
 pub use schema::*;
-
-#[derive(Clone, Copy, Debug, Default)]
-pub enum Context {
-    /// Any operation that is done on groups
-    Aggregation,
-    /// Any operation that is done while projection/ selection of data
-    #[default]
-    Default,
-}

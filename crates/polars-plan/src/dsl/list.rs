@@ -2,6 +2,7 @@ use polars_core::prelude::*;
 #[cfg(feature = "diff")]
 use polars_core::series::ops::NullBehavior;
 
+use crate::dsl::functions::lit;
 use crate::prelude::function_expr::ListFunction;
 use crate::prelude::*;
 
@@ -9,16 +10,6 @@ use crate::prelude::*;
 pub struct ListNameSpace(pub Expr);
 
 impl ListNameSpace {
-    #[cfg(feature = "list_any_all")]
-    pub fn any(self) -> Expr {
-        self.0.map_unary(FunctionExpr::ListExpr(ListFunction::Any))
-    }
-
-    #[cfg(feature = "list_any_all")]
-    pub fn all(self) -> Expr {
-        self.0.map_unary(FunctionExpr::ListExpr(ListFunction::All))
-    }
-
     #[cfg(feature = "list_drop_nulls")]
     pub fn drop_nulls(self) -> Expr {
         self.0
@@ -243,9 +234,8 @@ impl ListNameSpace {
     /// an `upper_bound` of struct fields that will be set.
     /// If this is incorrectly downstream operation may fail. For instance an `all().sum()` expression
     /// will look in the current schema to determine which columns to select.
-    pub fn to_struct(self, args: ListToStructArgs) -> Expr {
-        self.0
-            .map_unary(FunctionExpr::ListExpr(ListFunction::ToStruct(args)))
+    pub fn to_struct(self, names: Arc<[PlSmallStr]>) -> Expr {
+        self.0.map_unary(ListFunction::ToStruct(names))
     }
 
     #[cfg(feature = "is_in")]
@@ -303,6 +293,14 @@ impl ListNameSpace {
             expr: Arc::new(self.0),
             evaluation: Arc::new(other.into()),
             variant: EvalVariant::List,
+        }
+    }
+
+    pub fn agg<E: Into<Expr>>(self, other: E) -> Expr {
+        Expr::Eval {
+            expr: Arc::new(self.0),
+            evaluation: Arc::new(other.into()),
+            variant: EvalVariant::ListAgg,
         }
     }
 }

@@ -8,7 +8,6 @@ from typing import TYPE_CHECKING
 import pytest
 
 import polars as pl
-from polars import StringCache
 from polars.exceptions import InvalidOperationError
 from polars.testing import assert_frame_equal, assert_series_equal
 
@@ -175,6 +174,56 @@ def test_is_in_9070() -> None:
     assert not pl.Series([1]).is_in(pl.Series([1.99])).item()
 
 
+def test_is_in_large_uint64_21966() -> None:
+    # https://github.com/pola-rs/polars/issues/21966
+    # Large integers beyond Float64 precision (2^53) should compare exactly,
+    # not lose precision by casting to Float64.
+
+    # Original issue: values differing only beyond float64 precision
+    s = pl.Series([58830407606777880], dtype=pl.UInt64)
+    assert not s.is_in([58830407606777883]).item()
+    assert s.is_in([58830407606777880]).item()
+
+    # Values at and beyond the float64 precision boundary (2^53)
+    boundary = 2**53
+    s = pl.Series([boundary, boundary + 1, boundary + 2], dtype=pl.UInt64)
+    assert s.is_in([boundary]).to_list() == [True, False, False]
+    assert s.is_in([boundary + 1]).to_list() == [False, True, False]
+
+    # UInt64 vs Int64: should use Int128 supertype to preserve precision
+    val = 2**53 + 1000
+    s = pl.Series([val], dtype=pl.UInt64)
+    assert s.is_in(pl.Series([val], dtype=pl.Int64)).item()
+    assert not s.is_in(pl.Series([val + 1], dtype=pl.Int64)).item()
+
+    # Int64 vs UInt64 (reverse direction)
+    s = pl.Series([val], dtype=pl.Int64)
+    assert s.is_in(pl.Series([val], dtype=pl.UInt64)).item()
+    assert not s.is_in(pl.Series([val + 1], dtype=pl.UInt64)).item()
+
+    # Negative values in signed list vs unsigned series (uses Int128 supertype)
+    s = pl.Series([100], dtype=pl.UInt64)
+    assert s.is_in(pl.Series([-1, 100, 200], dtype=pl.Int64)).item()
+    assert not s.is_in(pl.Series([-1, 99, 200], dtype=pl.Int64)).item()
+
+    # Smaller integer type combinations that have lossless supertypes
+    s = pl.Series([100, 200], dtype=pl.UInt32)
+    assert s.is_in(pl.Series([100, 300], dtype=pl.Int32)).to_list() == [True, False]
+
+    s = pl.Series([100, 200], dtype=pl.Int16)
+    assert s.is_in(pl.Series([100, 300], dtype=pl.UInt16)).to_list() == [True, False]
+
+    # UInt64 max value (no lossless supertype with Int64)
+    s = pl.Series([2**64 - 1], dtype=pl.UInt64)
+    assert s.is_in(pl.Series([2**64 - 1], dtype=pl.UInt64)).item()
+    assert not s.is_in(pl.Series([2**64 - 2], dtype=pl.UInt64)).item()
+
+    # Fallback to try_get_supertype for types without lossless supertype
+    s = pl.Series([100], dtype=pl.UInt128)
+    assert s.is_in(pl.Series([100], dtype=pl.Int64)).item()
+    assert not s.is_in(pl.Series([99], dtype=pl.Int64)).item()
+
+
 def test_is_in_float_list_10764() -> None:
     df = pl.DataFrame(
         {
@@ -304,7 +353,6 @@ def test_is_in_invalid_shape() -> None:
         pl.Series("a", [1, 2, 3]).is_in([[], []])
 
 
-@pytest.mark.may_fail_auto_streaming
 def test_is_in_list_rhs() -> None:
     assert_series_equal(
         pl.Series([1, 2, 3, 4, 5]).is_in(pl.Series([[1], [2, 9], [None], None, None])),
@@ -427,7 +475,6 @@ def test_is_in_date_range() -> None:
     assert out.to_list() == [False, True, True]
 
 
-@StringCache()
 @pytest.mark.parametrize("dtype", [pl.Categorical, pl.Enum(["a", "b", "c"])])
 @pytest.mark.parametrize("nulls_equal", [False, True])
 def test_cat_is_in_series(dtype: pl.DataType, nulls_equal: bool) -> None:
@@ -441,7 +488,6 @@ def test_cat_is_in_series(dtype: pl.DataType, nulls_equal: bool) -> None:
     assert_series_equal(s.is_in(s2_str, nulls_equal=nulls_equal), expected)
 
 
-@StringCache()
 @pytest.mark.parametrize("nulls_equal", [False, True])
 def test_cat_is_in_series_non_existent(nulls_equal: bool) -> None:
     dtype = pl.Categorical
@@ -475,7 +521,6 @@ def test_enum_is_in_series_non_existent(nulls_equal: bool) -> None:
     assert_series_equal(out, expected)
 
 
-@StringCache()
 @pytest.mark.parametrize("dtype", [pl.Categorical, pl.Enum(["a", "b", "c"])])
 @pytest.mark.parametrize("nulls_equal", [False, True])
 def test_cat_is_in_with_lit_str(dtype: pl.DataType, nulls_equal: bool) -> None:
@@ -487,7 +532,6 @@ def test_cat_is_in_with_lit_str(dtype: pl.DataType, nulls_equal: bool) -> None:
     assert_series_equal(s.is_in(lit, nulls_equal=nulls_equal), expected)
 
 
-@StringCache()
 @pytest.mark.parametrize("nulls_equal", [False, True])
 def test_cat_is_in_with_lit_str_non_existent(nulls_equal: bool) -> None:
     dtype = pl.Categorical()
@@ -499,7 +543,6 @@ def test_cat_is_in_with_lit_str_non_existent(nulls_equal: bool) -> None:
     assert_series_equal(s.is_in(lit, nulls_equal=nulls_equal), expected)
 
 
-@StringCache()
 @pytest.mark.parametrize("dtype", [pl.Categorical, pl.Enum(["a", "b", "c"])])
 def test_cat_is_in_with_lit_str_cache_setup(dtype: pl.DataType) -> None:
     # init the global cache
@@ -519,7 +562,7 @@ def test_is_in_with_wildcard_13809() -> None:
 @pytest.mark.parametrize(
     "dtype",
     [
-        pytest.param(pl.Categorical, marks=pytest.mark.may_fail_auto_streaming),
+        pl.Categorical,
         pl.Enum(["a", "b", "c", "d"]),
     ],
 )
@@ -533,9 +576,7 @@ def test_cat_is_in_from_str(dtype: pl.DataType) -> None:
     )
 
 
-@pl.StringCache()
 @pytest.mark.parametrize("dtype", [pl.Categorical, pl.Enum(["a", "b", "c", "d"])])
-@pytest.mark.may_fail_auto_streaming
 def test_cat_list_is_in_from_cat(dtype: pl.DataType) -> None:
     df = pl.DataFrame(
         [
@@ -553,7 +594,6 @@ def test_cat_list_is_in_from_cat(dtype: pl.DataType) -> None:
     assert_frame_equal(res, expected_df)
 
 
-@pl.StringCache()
 @pytest.mark.parametrize(
     ("val", "expected"),
     [
@@ -562,7 +602,6 @@ def test_cat_list_is_in_from_cat(dtype: pl.DataType) -> None:
         ("e", [False, False, False, None, False]),
     ],
 )
-@pytest.mark.may_fail_auto_streaming
 def test_cat_list_is_in_from_cat_single(val: str | None, expected: list[bool]) -> None:
     df = pl.Series(
         "li",
@@ -574,7 +613,6 @@ def test_cat_list_is_in_from_cat_single(val: str | None, expected: list[bool]) -
     assert_frame_equal(res, expected_df)
 
 
-@pl.StringCache()
 def test_cat_list_is_in_from_str() -> None:
     df = pl.DataFrame(
         [
@@ -592,7 +630,6 @@ def test_cat_list_is_in_from_str() -> None:
     assert_frame_equal(res, expected_df)
 
 
-@pl.StringCache()
 @pytest.mark.parametrize(
     ("val", "expected"),
     [
@@ -709,7 +746,6 @@ def test_null_propagate_all_paths(nulls_equal: bool) -> None:
     assert_series_equal(result, expected)
 
 
-@pytest.mark.usefixtures("test_global_and_local")
 @pytest.mark.parametrize("nulls_equal", [False, True])
 def test_null_propagate_all_paths_cat(nulls_equal: bool) -> None:
     # No nulls in either

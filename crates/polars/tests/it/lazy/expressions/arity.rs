@@ -58,9 +58,9 @@ fn includes_null_predicate_3038() -> PolarsResult<()> {
                     s.str()?
                         .to_lowercase()
                         .contains("not_exist", true)
-                        .map(|ca| Some(ca.into_column()))
+                        .map(|ca| ca.into_column())
                 },
-                GetOutput::from_type(DataType::Boolean),
+                |_, f| Ok(Field::new(f.name().clone(), DataType::Boolean)),
             ))
             .then(lit("unexpected"))
             .when(col("a").eq(lit("a1".to_string())))
@@ -88,9 +88,9 @@ fn includes_null_predicate_3038() -> PolarsResult<()> {
                     s.str()?
                         .to_lowercase()
                         .contains_literal("non-existent")
-                        .map(|ca| Some(ca.into_column()))
+                        .map(|ca| ca.into_column())
                 },
-                GetOutput::from_type(DataType::Boolean),
+                |_, f| Ok(Field::new(f.name().clone(), DataType::Boolean)),
             ))
             .then(lit("weird-1"))
             .when(col("a").eq(lit("a1".to_string())))
@@ -241,7 +241,10 @@ fn test_binary_over_3930() -> PolarsResult<()> {
 
     let ss = col("score").pow(2);
     let mdiff = (ss.clone().shift(lit(-1)) - ss.shift(lit(1))) / lit(2);
-    let out = df.lazy().select([mdiff.over([col("class")])]).collect()?;
+    let out = df
+        .lazy()
+        .select([mdiff.over([col("class")]).unwrap()])
+        .collect()?;
 
     let out = out.column("score")?;
     let out = out.f64()?;
@@ -358,10 +361,13 @@ fn test_binary_group_consistency() -> PolarsResult<()> {
 
     assert_eq!(out.dtype(), &DataType::List(Box::new(DataType::String)));
     assert_eq!(
-        out.explode(false)?
-            .str()?
-            .into_no_null_iter()
-            .collect::<Vec<_>>(),
+        out.explode(ExplodeOptions {
+            empty_as_null: true,
+            keep_nulls: true
+        })?
+        .str()?
+        .into_no_null_iter()
+        .collect::<Vec<_>>(),
         &["a", "b", "c", "d"]
     );
 

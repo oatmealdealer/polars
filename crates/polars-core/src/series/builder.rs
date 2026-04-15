@@ -14,7 +14,7 @@ pub struct SeriesBuilder {
 
 impl SeriesBuilder {
     pub fn new(dtype: DataType) -> Self {
-        // FIXME: get rid of this hack.
+        // TODO: get rid of this hack.
         #[cfg(feature = "object")]
         if matches!(dtype, DataType::Object(_)) {
             let builder = get_object_builder(PlSmallStr::EMPTY, 0).as_array_builder();
@@ -171,7 +171,16 @@ impl SeriesBuilder {
 
     pub fn opt_gather_extend(&mut self, other: &Series, idxs: &[IdxSize], share: ShareStrategy) {
         let chunks = other.chunks();
+        assert!(other.len() < IdxSize::MAX as usize);
         assert!(chunks.len() == 1);
         self.builder.opt_gather_extend(&*chunks[0], idxs, share);
+    }
+
+    pub fn push_any_value(&mut self, value: AnyValue<'static>) {
+        // @PERF
+        self.extend(
+            &Scalar::new(self.dtype.clone(), value).into_series(PlSmallStr::EMPTY),
+            ShareStrategy::Always,
+        );
     }
 }

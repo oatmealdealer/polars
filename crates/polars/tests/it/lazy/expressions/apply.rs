@@ -9,7 +9,9 @@ fn test_int_range_agg() -> PolarsResult<()> {
 
     let out = df
         .lazy()
-        .with_columns([int_range(lit(0i32), len(), 1, DataType::Int64).over([col("x")])])
+        .with_columns([int_range(lit(0i32), len(), 1, DataType::Int64)
+            .over([col("x")])
+            .unwrap()])
         .collect()?;
     assert_eq!(
         Vec::from_iter(out.column("literal")?.i64()?.into_no_null_iter()),
@@ -29,8 +31,14 @@ fn test_groups_update() -> PolarsResult<()> {
     let out = df
         .lazy()
         .group_by_stable([col("group")])
-        .agg([col("id").unique_counts().log(2.0)])
-        .explode(cols(["id"]))
+        .agg([col("id").unique_counts().log(lit(2.0))])
+        .explode(
+            cols(["id"]),
+            ExplodeOptions {
+                empty_as_null: true,
+                keep_nulls: true,
+            },
+        )
         .collect()?;
     assert_eq!(
         out.column("id")?
@@ -51,9 +59,15 @@ fn test_groups_update_binary_shift_log() -> PolarsResult<()> {
     ]?
     .lazy()
     .group_by([col("b")])
-    .agg([col("a") - col("a").shift(lit(1)).log(2.0)])
+    .agg([col("a") - col("a").shift(lit(1)).log(lit(2.0))])
     .sort(["b"], Default::default())
-    .explode(cols(["a"]))
+    .explode(
+        cols(["a"]),
+        ExplodeOptions {
+            empty_as_null: true,
+            keep_nulls: true,
+        },
+    )
     .collect()?;
     assert_eq!(
         Vec::from(out.column("a")?.f64()?),

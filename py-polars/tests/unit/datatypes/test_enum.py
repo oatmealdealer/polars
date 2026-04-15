@@ -6,20 +6,23 @@ import io
 import operator
 import re
 import sys
+import warnings
 from datetime import date
 from textwrap import dedent
-from typing import Any, Callable
+from typing import TYPE_CHECKING, Any
 
 import pytest
 
 import polars as pl
-from polars import StringCache
 from polars.exceptions import (
     InvalidOperationError,
     SchemaError,
 )
 from polars.testing import assert_frame_equal, assert_series_equal
 from tests.unit.conftest import INTEGER_DTYPES
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 if sys.version_info >= (3, 11):
     from enum import StrEnum
@@ -153,11 +156,15 @@ def test_nested_enum_creation() -> None:
     assert s.dtype == dtype
 
 
+# Test can be removed after 2.0 release
 def test_enum_union() -> None:
     e1 = pl.Enum(["a", "b"])
     e2 = pl.Enum(["b", "c"])
-    assert e1 | e2 == pl.Enum(["a", "b", "c"])
-    assert e1.union(e2) == pl.Enum(["a", "b", "c"])
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", DeprecationWarning)
+        assert e1 | e2 == pl.Enum(["a", "b", "c"])
+        assert e1.union(e2) == pl.Enum(["a", "b", "c"])
 
 
 def test_nested_enum_concat() -> None:
@@ -268,7 +275,6 @@ def test_casting_to_an_enum_from_categorical_nonexistent() -> None:
         pl.Series([None, "a", "b", "c"], dtype=pl.Categorical).cast(pl.Enum(["a", "b"]))
 
 
-@StringCache()
 def test_casting_to_an_enum_from_global_categorical() -> None:
     dtype = pl.Enum(["a", "b", "c"])
     s = pl.Series([None, "a", "b", "c"], dtype=pl.Categorical)
@@ -279,7 +285,6 @@ def test_casting_to_an_enum_from_global_categorical() -> None:
     assert_series_equal(s2, expected)
 
 
-@StringCache()
 def test_casting_to_an_enum_from_global_categorical_nonexistent() -> None:
     with pytest.raises(
         InvalidOperationError,
@@ -298,7 +303,6 @@ def test_casting_from_an_enum_to_local() -> None:
     assert_series_equal(s2, expected)
 
 
-@StringCache()
 def test_casting_from_an_enum_to_global() -> None:
     dtype = pl.Enum(["a", "b", "c"])
     s = pl.Series([None, "a", "b", "c"], dtype=dtype)
@@ -676,7 +680,6 @@ def test_init_series_from_int_enum(EnumBase: tuple[type, ...]) -> None:
     assert_series_equal(expected, s)
 
 
-@pytest.mark.may_fail_auto_streaming
 def test_read_enum_from_csv() -> None:
     df = pl.DataFrame(
         {
@@ -692,3 +695,13 @@ def test_read_enum_from_csv() -> None:
     read = pl.read_csv(f, schema=schema)
     assert read.schema == schema
     assert_frame_equal(df.cast(schema), read)  # type: ignore[arg-type]
+
+
+def test_enum_struct_slice_25821() -> None:
+    df = pl.select(
+        x=pl.concat_list(
+            pl.struct(y=pl.lit("a", pl.Enum(["a", "b", "c"]))),
+        ),
+    )
+    res = df.select(pl.col.x.list.head(1))
+    assert res.to_dict(as_series=False) == {"x": [[{"y": "a"}]]}

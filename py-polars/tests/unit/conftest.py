@@ -6,8 +6,7 @@ import random
 import string
 import sys
 from contextlib import contextmanager
-from functools import wraps
-from typing import TYPE_CHECKING, Any, Callable, cast
+from typing import TYPE_CHECKING, Any, cast
 
 import numpy as np
 import pytest
@@ -16,7 +15,7 @@ import polars as pl
 from polars.testing.parametric import load_profile
 
 if TYPE_CHECKING:
-    from collections.abc import Generator
+    from collections.abc import Callable, Generator
     from types import ModuleType
     from typing import Any
 
@@ -28,9 +27,15 @@ load_profile(
 
 # Data type groups
 SIGNED_INTEGER_DTYPES = [pl.Int8(), pl.Int16(), pl.Int32(), pl.Int64(), pl.Int128()]
-UNSIGNED_INTEGER_DTYPES = [pl.UInt8(), pl.UInt16(), pl.UInt32(), pl.UInt64()]
+UNSIGNED_INTEGER_DTYPES = [
+    pl.UInt8(),
+    pl.UInt16(),
+    pl.UInt32(),
+    pl.UInt64(),
+    pl.UInt128(),
+]
 INTEGER_DTYPES = SIGNED_INTEGER_DTYPES + UNSIGNED_INTEGER_DTYPES
-FLOAT_DTYPES = [pl.Float32(), pl.Float64()]
+FLOAT_DTYPES = [pl.Float16(), pl.Float32(), pl.Float64()]
 NUMERIC_DTYPES = INTEGER_DTYPES + FLOAT_DTYPES
 
 DATETIME_DTYPES = [pl.Datetime("ms"), pl.Datetime("us"), pl.Datetime("ns")]
@@ -136,7 +141,7 @@ for T in ["T", " "]:
 
 @pytest.fixture(params=ISO8601_FORMATS_DATETIME)
 def iso8601_format_datetime(request: pytest.FixtureRequest) -> list[str]:
-    return cast(list[str], request.param)
+    return cast("list[str]", request.param)
 
 
 ISO8601_TZ_AWARE_FORMATS_DATETIME = []
@@ -159,7 +164,7 @@ for T in ["T", " "]:
 
 @pytest.fixture(params=ISO8601_TZ_AWARE_FORMATS_DATETIME)
 def iso8601_tz_aware_format_datetime(request: pytest.FixtureRequest) -> list[str]:
-    return cast(list[str], request.param)
+    return cast("list[str]", request.param)
 
 
 ISO8601_FORMATS_DATE = []
@@ -171,7 +176,7 @@ for date_sep in ("/", "-"):
 
 @pytest.fixture(params=ISO8601_FORMATS_DATE)
 def iso8601_format_date(request: pytest.FixtureRequest) -> list[str]:
-    return cast(list[str], request.param)
+    return cast("list[str]", request.param)
 
 
 class MemoryUsage:
@@ -223,7 +228,7 @@ def memory_usage_without_pyarrow() -> Generator[MemoryUsage, Any, Any]:
 
     Memory usage from PyArrow is not tracked.
     """
-    if not pl.polars._debug:  # type: ignore[attr-defined]
+    if not pl._plr._debug:
         pytest.skip("Memory usage only available in debug/dev builds.")
 
     if os.getenv("POLARS_FORCE_ASYNC", "0") == "1":
@@ -249,25 +254,6 @@ def memory_usage_without_pyarrow() -> Generator[MemoryUsage, Any, Any]:
     #     gc.collect()
     #
     #     tracemalloc.stop()
-
-
-@pytest.fixture(params=[True, False])
-def test_global_and_local(
-    request: FixtureRequest,
-) -> Generator[Any, Any, Any]:
-    """
-    Setup fixture which runs each test with and without global string cache.
-
-    Usage: @pytest.mark.usefixtures("test_global_and_local")
-    """
-    use_global = request.param
-    if use_global:
-        with pl.StringCache():
-            # Pre-fill some global items to ensure physical repr isn't 0..n.
-            pl.Series(["eapioejf", "2m4lmv", "3v3v9dlf"], dtype=pl.Categorical)
-            yield
-    else:
-        yield
 
 
 @contextmanager
@@ -298,23 +284,6 @@ def mock_module_import(
                 sys.modules[name] = original
             else:
                 del sys.modules[name]
-
-
-# The new streaming engine currently only works if you keep the same string cache
-# alive the entire time.
-def with_string_cache_if_auto_streaming(f: Any) -> Any:
-    if (
-        os.getenv("POLARS_AUTO_NEW_STREAMING", os.getenv("POLARS_FORCE_NEW_STREAMING"))
-        != "1"
-    ):
-        return f
-
-    @wraps(f)
-    def with_cache(*args: Any, **kwargs: Any) -> Any:
-        with pl.StringCache():
-            return f(*args, **kwargs)
-
-    return with_cache
 
 
 def time_func(func: Callable[[], Any], *, iterations: int = 3) -> float:

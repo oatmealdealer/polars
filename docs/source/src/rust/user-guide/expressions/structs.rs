@@ -25,7 +25,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .clone()
         .lazy()
         .select([col("Theatre").value_counts(true, true, "count", false)])
-        .unnest(by_name(["Theatre"], true))
+        .unnest(by_name(["Theatre"], true, false), None)
         .collect()?;
     println!("{result}");
     // --8<-- [end:struct_unnest]
@@ -65,7 +65,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // --8<-- [start:struct_ranking]
     let result = ratings
-        .clone()
         .lazy()
         .with_columns([as_struct(vec![col("Count"), col("Avg_Rating")])
             .rank(
@@ -75,12 +74,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 },
                 None,
             )
-            .over([col("Movie"), col("Theatre")])
+            .over([col("Movie"), col("Theatre")])?
             .alias("Rank")])
         // .filter(as_struct(&[col("Movie"), col("Theatre")]).is_duplicated())
         // Error: .is_duplicated() not available if you try that
         // https://github.com/pola-rs/polars/issues/3803
-        .filter(len().over([col("Movie"), col("Theatre")]).gt(lit(1)))
+        .filter(len().over([col("Movie"), col("Theatre")])?.gt(lit(1)))
         .collect()?;
     println!("{result}");
     // --8<-- [end:struct_ranking]
@@ -120,9 +119,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                             })
                             .collect();
 
-                        Ok(Some(result.into_column()))
+                        Ok(result.into_column())
                     },
-                    GetOutput::from_type(DataType::Int32),
+                    |_, f| Ok(Field::new(f.name().clone(), DataType::Int32)),
                 )
                 // note: the `'solution_map_elements'` alias is just there to show how you
                 // get the same output as in the Python API example.

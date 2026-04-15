@@ -44,12 +44,12 @@ fn prepare_bool_vec(values: &[bool], by_len: usize) -> Vec<bool> {
     }
 }
 
-static ERR_MSG: &str = "expressions in 'sort_by' produced a different number of groups";
+static ERR_MSG: &str = "expressions in 'sort_by' must have matching group lengths";
 
 fn check_groups(a: &GroupsType, b: &GroupsType) -> PolarsResult<()> {
     polars_ensure!(a.iter().zip(b.iter()).all(|(a, b)| {
         a.len() == b.len()
-    }), ComputeError: ERR_MSG);
+    }), ShapeMismatch: ERR_MSG);
     Ok(())
 }
 
@@ -96,17 +96,15 @@ fn sort_by_groups_single_by(
             map_sorted_indices_to_group_slice(&sorted_idx, first)
         },
     };
-    let first = new_idx
-        .first()
-        .ok_or_else(|| polars_err!(ComputeError: "{}", ERR_MSG))?;
 
+    let first = new_idx.first().unwrap_or(&0);
     Ok((*first, new_idx))
 }
 
 fn sort_by_groups_no_match_single<'a>(
     mut ac_in: AggregationContext<'a>,
     mut ac_by: AggregationContext<'a>,
-    descending: bool,
+    options: SortOptions,
     expr: &Expr,
 ) -> PolarsResult<AggregationContext<'a>> {
     let s_in = ac_in.aggregated();
@@ -122,10 +120,9 @@ fn sort_by_groups_no_match_single<'a>(
                 (Some(s), Some(s_sort_by)) => {
                     polars_ensure!(s.len() == s_sort_by.len(), ComputeError: "series lengths don't match in 'sort_by' expression");
                     let idx = s_sort_by.arg_sort(SortOptions {
-                        descending,
                         // We are already in par iter.
                         multithreaded: false,
-                        ..Default::default()
+                        ..options
                     });
                     Ok(Some(unsafe { s.take_unchecked(&idx) }))
                 },
@@ -192,7 +189,7 @@ fn sort_by_groups_multiple_by(
     };
     let first = new_idx
         .first()
-        .ok_or_else(|| polars_err!(ComputeError: "{}", ERR_MSG))?;
+        .ok_or_else(|| polars_err!(ComputeError: "{ERR_MSG}"))?;
 
     Ok((*first, new_idx))
 }
@@ -202,7 +199,7 @@ impl PhysicalExpr for SortByExpr {
         Some(&self.expr)
     }
 
-    fn evaluate(&self, df: &DataFrame, state: &ExecutionState) -> PolarsResult<Column> {
+    fn evaluate_impl(&self, df: &DataFrame, state: &ExecutionState) -> PolarsResult<Column> {
         let series_f = || self.input.evaluate(df, state);
         if self.by.is_empty() {
             // Sorting by 0 columns returns input unchanged.
@@ -290,7 +287,7 @@ impl PhysicalExpr for SortByExpr {
     }
 
     #[allow(clippy::ptr_arg)]
-    fn evaluate_on_groups<'a>(
+    fn evaluate_on_groups_impl<'a>(
         &self,
         df: &DataFrame,
         groups: &'a GroupPositions,
@@ -305,6 +302,39 @@ impl PhysicalExpr for SortByExpr {
             .iter()
             .map(|e| e.evaluate_on_groups(df, groups, state))
             .collect::<PolarsResult<Vec<_>>>()?;
+
+        assert!(
+            ac_sort_by
+                .iter()
+                .all(|ac_sort_by| ac_sort_by.groups.len() == ac_in.groups.len())
+        );
+
+        // Enable reliable length checks downstream
+        ac_in.set_groups_for_undefined_agg_states();
+        ac_sort_by
+            .iter_mut()
+            .for_each(|ac| ac.set_groups_for_undefined_agg_states());
+
+        // If every input is a LiteralScalar, we return a LiteralScalar.
+        // Otherwise, we convert any LiteralScalar to AggregatedList.
+        let all_literal = matches!(ac_in.state, AggState::LiteralScalar(_))
+            || ac_sort_by
+                .iter()
+                .all(|ac| matches!(ac.state, AggState::LiteralScalar(_)));
+
+        if all_literal {
+            return Ok(ac_in);
+        } else {
+            if matches!(ac_in.state, AggState::LiteralScalar(_)) {
+                ac_in.aggregated();
+            }
+            for ac in ac_sort_by.iter_mut() {
+                if matches!(ac.state, AggState::LiteralScalar(_)) {
+                    ac.aggregated();
+                }
+            }
+        }
+
         let mut sort_by_s = ac_sort_by
             .iter()
             .map(|c| {
@@ -321,14 +351,6 @@ impl PhysicalExpr for SortByExpr {
             })
             .collect::<Vec<_>>();
 
-        // A check up front to ensure the input expressions have the same number of total elements.
-        for sort_by_s in &sort_by_s {
-            polars_ensure!(
-                sort_by_s.len() == ac_in.flat_naive().len(), expr = self.expr, ComputeError:
-                "the expression in `sort_by` argument must result in the same length"
-            );
-        }
-
         let ordered_by_group_operation = matches!(
             ac_sort_by[0].update_groups,
             UpdateGroups::WithSeriesLen | UpdateGroups::WithGroupsLen
@@ -343,7 +365,7 @@ impl PhysicalExpr for SortByExpr {
                 return sort_by_groups_no_match_single(
                     ac_in,
                     ac_sort_by,
-                    self.sort_options.descending[0],
+                    SortOptions::from(&self.sort_options),
                     &self.expr,
                 );
             };
@@ -393,7 +415,15 @@ impl PhysicalExpr for SortByExpr {
         // group_by operation - we must ensure that we are as well.
         if ordered_by_group_operation {
             let s = ac_in.aggregated();
-            ac_in.with_values(s.explode(false).unwrap(), false, None)?;
+            ac_in.with_values(
+                s.explode(ExplodeOptions {
+                    empty_as_null: true,
+                    keep_nulls: true,
+                })
+                .unwrap(),
+                false,
+                None,
+            )?;
         }
 
         ac_in.with_groups(groups.into_sliceable());

@@ -1,4 +1,5 @@
 mod builder;
+mod equality;
 mod evaluate;
 mod function_expr;
 #[cfg(feature = "cse")]
@@ -20,16 +21,18 @@ use polars_core::chunked_array::cast::CastOptions;
 use polars_core::prelude::*;
 use polars_core::utils::{get_time_units, try_get_supertype};
 use polars_utils::arena::{Arena, Node};
-pub use scalar::is_scalar_ae;
+pub use scalar::{is_length_preserving_ae, is_scalar_ae};
 use strum_macros::IntoStaticStr;
 pub use traverse::*;
+pub mod projection_height;
 mod properties;
 pub use aexpr::function_expr::schema::FieldsMapper;
 pub use builder::AExprBuilder;
+pub use evaluate::{constant_evaluate, into_column};
 pub use properties::*;
+pub use schema::ToFieldContext;
 
 use crate::constants::LEN;
-use crate::plans::Context;
 use crate::prelude::*;
 
 #[derive(Clone, Debug, IntoStaticStr)]
@@ -45,18 +48,30 @@ pub enum IRAggExpr {
     },
     Median(Node),
     NUnique(Node),
+    Item {
+        input: Node,
+        /// Return a missing value if there are no values.
+        allow_empty: bool,
+    },
     First(Node),
+    FirstNonNull(Node),
     Last(Node),
+    LastNonNull(Node),
     Mean(Node),
-    Implode(Node),
+    Implode {
+        input: Node,
+        maintain_order: bool,
+    },
     Quantile {
         expr: Node,
         quantile: Node,
         method: QuantileMethod,
     },
     Sum(Node),
-    // include_nulls
-    Count(Node, bool),
+    Count {
+        input: Node,
+        include_nulls: bool,
+    },
     Std(Node, u8),
     Var(Node, u8),
     AggGroups(Node),
@@ -66,20 +81,27 @@ impl Hash for IRAggExpr {
     fn hash<H: Hasher>(&self, state: &mut H) {
         std::mem::discriminant(self).hash(state);
         match self {
-            Self::Min { propagate_nans, .. } | Self::Max { propagate_nans, .. } => {
-                propagate_nans.hash(state)
-            },
+            Self::Min {
+                input: _,
+                propagate_nans,
+            }
+            | Self::Max {
+                input: _,
+                propagate_nans,
+            } => propagate_nans.hash(state),
             Self::Quantile {
                 method: interpol, ..
             } => interpol.hash(state),
             Self::Std(_, v) | Self::Var(_, v) => v.hash(state),
-            Self::Count(_, include_nulls) => include_nulls.hash(state),
+            Self::Count {
+                input: _,
+                include_nulls,
+            } => include_nulls.hash(state),
             _ => {},
         }
     }
 }
 
-#[cfg(feature = "cse")]
 impl IRAggExpr {
     pub(super) fn equal_nodes(&self, other: &IRAggExpr) -> bool {
         use IRAggExpr::*;
@@ -112,14 +134,20 @@ impl From<IRAggExpr> for GroupByMethod {
     fn from(value: IRAggExpr) -> Self {
         use IRAggExpr::*;
         match value {
-            Min { propagate_nans, .. } => {
+            Min {
+                input: _,
+                propagate_nans,
+            } => {
                 if propagate_nans {
                     GroupByMethod::NanMin
                 } else {
                     GroupByMethod::Min
                 }
             },
-            Max { propagate_nans, .. } => {
+            Max {
+                input: _,
+                propagate_nans,
+            } => {
                 if propagate_nans {
                     GroupByMethod::NanMax
                 } else {
@@ -129,14 +157,21 @@ impl From<IRAggExpr> for GroupByMethod {
             Median(_) => GroupByMethod::Median,
             NUnique(_) => GroupByMethod::NUnique,
             First(_) => GroupByMethod::First,
+            FirstNonNull(_) => GroupByMethod::FirstNonNull,
             Last(_) => GroupByMethod::Last,
+            LastNonNull(_) => GroupByMethod::LastNonNull,
+            Item { allow_empty, .. } => GroupByMethod::Item { allow_empty },
             Mean(_) => GroupByMethod::Mean,
-            Implode(_) => GroupByMethod::Implode,
+            Implode { maintain_order, .. } => GroupByMethod::Implode { maintain_order },
             Sum(_) => GroupByMethod::Sum,
-            Count(_, include_nulls) => GroupByMethod::Count { include_nulls },
+            Count {
+                input: _,
+                include_nulls,
+            } => GroupByMethod::Count { include_nulls },
             Std(_, ddof) => GroupByMethod::Std(ddof),
             Var(_, ddof) => GroupByMethod::Var(ddof),
             AggGroups(_) => GroupByMethod::Groups,
+            // Multi-input aggregations.
             Quantile { .. } => unreachable!(),
         }
     }
@@ -146,11 +181,20 @@ impl From<IRAggExpr> for GroupByMethod {
 #[derive(Clone, Debug, Default)]
 #[cfg_attr(feature = "ir_serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum AExpr {
+    /// Values in a `eval` context.
+    ///
+    /// Equivalent of `pl.element()`.
+    Element,
     Explode {
         expr: Node,
-        skip_empty: bool,
+        options: ExplodeOptions,
     },
     Column(PlSmallStr),
+    /// Struct field value in a `struct.with_fields` context.
+    ///
+    /// Equivalent of `pl.field(name)`.
+    #[cfg(feature = "dtype-struct")]
+    StructField(PlSmallStr),
     Literal(LiteralValue),
     BinaryExpr {
         left: Node,
@@ -170,6 +214,7 @@ pub enum AExpr {
         expr: Node,
         idx: Node,
         returns_scalar: bool,
+        null_on_oob: bool,
     },
     SortBy {
         expr: Node,
@@ -186,10 +231,14 @@ pub enum AExpr {
         truthy: Node,
         falsy: Node,
     },
+    AnonymousAgg {
+        input: Vec<ExprIR>,
+        fmt_str: Box<PlSmallStr>,
+        function: OpaqueStreamingAgg,
+    },
     AnonymousFunction {
         input: Vec<ExprIR>,
         function: OpaqueColumnUdf,
-        output_type: GetOutput,
         options: FunctionOptions,
         fmt_str: Box<PlSmallStr>,
     },
@@ -205,6 +254,11 @@ pub enum AExpr {
 
         variant: EvalVariant,
     },
+    #[cfg(feature = "dtype-struct")]
+    StructEval {
+        expr: Node,
+        evaluation: Vec<ExprIR>,
+    },
     Function {
         /// Function arguments
         /// Some functions rely on aliases,
@@ -215,11 +269,19 @@ pub enum AExpr {
         function: IRFunctionExpr,
         options: FunctionOptions,
     },
-    Window {
+    Over {
         function: Node,
         partition_by: Vec<Node>,
         order_by: Option<(Node, SortOptions)>,
-        options: WindowType,
+        mapping: WindowMapping,
+    },
+    #[cfg(feature = "dynamic_group_by")]
+    Rolling {
+        function: Node,
+        index_column: Node,
+        period: Duration,
+        offset: Duration,
+        closed_window: ClosedWindow,
     },
     Slice {
         input: Node,
@@ -236,14 +298,79 @@ impl AExpr {
         AExpr::Column(name)
     }
 
-    /// This should be a 1 on 1 copy of the get_type method of Expr until Expr is completely phased out.
-    pub fn get_type(
-        &self,
-        schema: &Schema,
-        ctxt: Context,
-        arena: &Arena<AExpr>,
-    ) -> PolarsResult<DataType> {
-        self.to_field(schema, ctxt, arena)
-            .map(|f| f.dtype().clone())
+    /// Is the top-level expression fallible based on the data values.
+    pub fn is_fallible_top_level(&self, arena: &Arena<AExpr>) -> bool {
+        #[allow(clippy::collapsible_match, clippy::match_like_matches_macro)]
+        match self {
+            AExpr::Function {
+                input, function, ..
+            } => match function {
+                IRFunctionExpr::ListExpr(f) => match f {
+                    IRListFunction::Get(false) => true,
+                    #[cfg(feature = "list_gather")]
+                    IRListFunction::Gather(false) => true,
+                    _ => false,
+                },
+                #[cfg(feature = "dtype-array")]
+                IRFunctionExpr::ArrayExpr(f) => match f {
+                    IRArrayFunction::Get(false) => true,
+                    _ => false,
+                },
+                #[cfg(feature = "replace")]
+                IRFunctionExpr::ReplaceStrict { .. } => true,
+                #[cfg(all(feature = "strings", feature = "temporal"))]
+                IRFunctionExpr::StringExpr(f) => match f {
+                    IRStringFunction::Strptime(_, strptime_options) => {
+                        debug_assert!(input.len() <= 2);
+
+                        let ambiguous_arg_is_infallible_scalar = input
+                            .get(1)
+                            .map(|x| arena.get(x.node()))
+                            .is_some_and(|ae| match ae {
+                                AExpr::Literal(lv) => {
+                                    lv.extract_str().is_some_and(|ambiguous| match ambiguous {
+                                        "earliest" | "latest" | "null" => true,
+                                        "raise" => false,
+                                        v => {
+                                            if cfg!(debug_assertions) {
+                                                panic!("unhandled parameter to ambiguous: {v}")
+                                            }
+                                            false
+                                        },
+                                    })
+                                },
+                                _ => false,
+                            });
+
+                        let ambiguous_is_fallible = !ambiguous_arg_is_infallible_scalar;
+
+                        !matches!(arena.get(input[0].node()), AExpr::Literal(_))
+                            && (strptime_options.strict || ambiguous_is_fallible)
+                    },
+                    _ => false,
+                },
+                _ => false,
+            },
+            AExpr::Cast {
+                expr,
+                dtype: _,
+                options: CastOptions::Strict,
+            } => !matches!(arena.get(*expr), AExpr::Literal(_)),
+            _ => false,
+        }
     }
+}
+
+#[recursive::recursive]
+pub fn deep_clone_ae(ae: Node, arena: &mut Arena<AExpr>) -> Node {
+    let slf = arena.get(ae).clone();
+
+    let mut children = vec![];
+    slf.children_rev(&mut children);
+    for child in &mut children {
+        *child = deep_clone_ae(*child, arena);
+    }
+    children.reverse();
+
+    arena.add(slf.replace_children(&children))
 }

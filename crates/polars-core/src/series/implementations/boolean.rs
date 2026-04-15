@@ -65,6 +65,16 @@ impl private::PrivateSeries for SeriesWrap<BooleanChunked> {
     }
 
     #[cfg(feature = "algorithm_group_by")]
+    unsafe fn agg_arg_min(&self, groups: &GroupsType) -> Series {
+        self.0.agg_arg_min(groups)
+    }
+
+    #[cfg(feature = "algorithm_group_by")]
+    unsafe fn agg_arg_max(&self, groups: &GroupsType) -> Series {
+        self.0.agg_arg_max(groups)
+    }
+
+    #[cfg(feature = "algorithm_group_by")]
     unsafe fn agg_sum(&self, groups: &GroupsType) -> Series {
         self.0.agg_sum(groups)
     }
@@ -90,15 +100,15 @@ impl private::PrivateSeries for SeriesWrap<BooleanChunked> {
 
     #[cfg(feature = "bitwise")]
     unsafe fn agg_and(&self, groups: &GroupsType) -> Series {
-        self.0.agg_and(groups)
+        self.0.agg_and(groups).into_series()
     }
     #[cfg(feature = "bitwise")]
     unsafe fn agg_or(&self, groups: &GroupsType) -> Series {
-        self.0.agg_or(groups)
+        self.0.agg_or(groups).into_series()
     }
     #[cfg(feature = "bitwise")]
     unsafe fn agg_xor(&self, groups: &GroupsType) -> Series {
-        self.0.agg_xor(groups)
+        self.0.agg_xor(groups).into_series()
     }
 
     #[cfg(feature = "algorithm_group_by")]
@@ -192,6 +202,10 @@ impl SeriesTrait for SeriesWrap<BooleanChunked> {
         self.0.take_unchecked(indices).into_series()
     }
 
+    fn deposit(&self, validity: &Bitmap) -> Series {
+        self.0.deposit(validity).into_series()
+    }
+
     fn len(&self) -> usize {
         self.0.len()
     }
@@ -244,6 +258,10 @@ impl SeriesTrait for SeriesWrap<BooleanChunked> {
         ChunkUnique::arg_unique(&self.0)
     }
 
+    fn unique_id(&self) -> PolarsResult<(IdxSize, Vec<IdxSize>)> {
+        ChunkUnique::unique_id(&self.0)
+    }
+
     fn is_null(&self) -> BooleanChunked {
         self.0.is_null()
     }
@@ -272,6 +290,9 @@ impl SeriesTrait for SeriesWrap<BooleanChunked> {
     }
     fn min_reduce(&self) -> PolarsResult<Scalar> {
         Ok(ChunkAggSeries::min_reduce(&self.0))
+    }
+    fn mean_reduce(&self) -> PolarsResult<Scalar> {
+        Ok(Scalar::new(DataType::Float64, self.mean().into()))
     }
     fn median_reduce(&self) -> PolarsResult<Scalar> {
         let ca = self

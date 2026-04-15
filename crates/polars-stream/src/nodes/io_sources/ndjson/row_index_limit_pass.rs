@@ -8,7 +8,7 @@ use polars_utils::priority::Priority;
 
 use crate::async_primitives::linearizer::Linearizer;
 use crate::morsel::{Morsel, MorselSeq, SourceToken};
-use crate::nodes::io_sources::multi_file_reader::reader_interface::output::FileReaderOutputSend;
+use crate::nodes::io_sources::multi_scan::reader_interface::output::FileReaderOutputSend;
 
 pub struct ApplyRowIndexOrLimit {
     pub morsel_receiver: Linearizer<Priority<Reverse<MorselSeq>, DataFrame>>,
@@ -32,8 +32,8 @@ impl ApplyRowIndexOrLimit {
 
         if verbose {
             eprintln!(
-                "[NDJSON ApplyRowIndexOrLimit]: init: \
-                limit: {:?} \
+                "[NDJson ApplyRowIndexOrLimit]: init: \
+                limit: {:?}, \
                 row_index: {:?}",
                 &limit, &row_index
             );
@@ -86,7 +86,7 @@ impl ApplyRowIndexOrLimit {
         drop(morsel_receiver);
 
         if verbose {
-            eprintln!("[NDJSON ApplyRowIndexOrLimit]: returning");
+            eprintln!("[NDJson ApplyRowIndexOrLimit]: returning");
         }
 
         Ok(())

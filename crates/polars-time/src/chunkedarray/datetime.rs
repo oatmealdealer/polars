@@ -96,6 +96,29 @@ pub trait DatetimeMethods: AsDatetime {
         cast_and_apply(self.as_datetime(), temporal::month)
     }
 
+    /// Returns the number of days in the month of the underlying NaiveDateTime
+    /// representation.
+    fn days_in_month(&self) -> Int8Chunked {
+        let ca = self.as_datetime();
+        let f = match ca.time_unit() {
+            TimeUnit::Nanoseconds => datetime_to_days_in_month_ns,
+            TimeUnit::Microseconds => datetime_to_days_in_month_us,
+            TimeUnit::Milliseconds => datetime_to_days_in_month_ms,
+        };
+        let ca_local = match ca.dtype() {
+            #[cfg(feature = "timezones")]
+            DataType::Datetime(_, Some(_)) => &polars_ops::chunked_array::replace_time_zone(
+                ca,
+                None,
+                &StringChunked::new("".into(), ["raise"]),
+                NonExistent::Raise,
+            )
+            .expect("Removing time zone is infallible"),
+            _ => ca,
+        };
+        ca_local.physical().apply_kernel_cast::<Int8Type>(&f)
+    }
+
     /// Extract ISO weekday from underlying NaiveDateTime representation.
     /// Returns the weekday number where monday = 1 and sunday = 7
     fn weekday(&self) -> Int8Chunked {
@@ -214,13 +237,13 @@ pub trait DatetimeMethods: AsDatetime {
                 {
                     NaiveDate::from_ymd_opt(y, m as u32, d as u32).map_or_else(
                         // We have an invalid date.
-                        || Err(polars_err!(ComputeError: format!("Invalid date components ({}, {}, {}) supplied", y, m, d))),
+                        || polars_bail!(ComputeError: "Invalid date components ({y}, {m}, {d}) supplied"),
                         // We have a valid date.
                         |date| {
                             date.and_hms_nano_opt(h as u32, mnt as u32, s as u32, ns as u32)
                                 .map_or_else(
                                     // We have invalid time components for the specified date.
-                                    || Err(polars_err!(ComputeError: format!("Invalid time components ({}, {}, {}, {}) supplied", h, mnt, s, ns))),
+                                    || polars_bail!(ComputeError: "Invalid time components ({h}, {mnt}, {s}, {ns}) supplied"),
                                     // We have a valid time.
                                     |ndt| {
                                         let t = ndt.and_utc();

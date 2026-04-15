@@ -23,11 +23,12 @@ if TYPE_CHECKING:
 
 def test_df_serde_roundtrip_binary(df: pl.DataFrame) -> None:
     serialized = df.serialize()
-    result = pl.DataFrame.deserialize(io.BytesIO(serialized), format="binary")
+    result = pl.DataFrame.deserialize(serialized, format="binary")
     assert_frame_equal(result, df, categorical_as_str=True)
 
 
 @given(df=dataframes())
+@example(df=pl.DataFrame({"a": {"a": 1.0}}, schema={"a": pl.Struct({"a": pl.Float16})}))
 @example(df=pl.DataFrame({"a": [None, None]}, schema={"a": pl.Null}))
 @example(df=pl.DataFrame(schema={"a": pl.List(pl.String)}))
 def test_df_serde_roundtrip_json(df: pl.DataFrame) -> None:
@@ -42,15 +43,13 @@ def test_df_serde_roundtrip_json(df: pl.DataFrame) -> None:
     assert_frame_equal(result, df, categorical_as_str=True)
 
 
-@pytest.mark.may_fail_auto_streaming
 def test_df_serde(df: pl.DataFrame) -> None:
     serialized = df.serialize()
     assert isinstance(serialized, bytes)
-    result = pl.DataFrame.deserialize(io.BytesIO(serialized))
+    result = pl.DataFrame.deserialize(serialized)
     assert_frame_equal(result, df)
 
 
-@pytest.mark.may_fail_auto_streaming
 def test_df_serde_json_stringio(df: pl.DataFrame) -> None:
     serialized = df.serialize(format="json")
     assert isinstance(serialized, str)

@@ -244,7 +244,7 @@ def linkcode_resolve(domain: str, info: dict[str, Any]) -> str | None:
     polars_root = (conf_dir_path.parent.parent / "polars").absolute()
 
     fn = os.path.relpath(fn, start=polars_root)
-    return f"{github_root}/blob/{git_ref}/py-polars/polars/{fn}{linespec}"
+    return f"{github_root}/blob/{git_ref}/py-polars/src/{fn}{linespec}"
 
 
 def _minify_classpaths(s: str) -> str:
@@ -275,11 +275,11 @@ def _minify_classpaths(s: str) -> str:
 
 
 def process_signature(  # noqa: D103
-    app: object,
-    what: object,
-    name: object,
-    obj: object,
-    opts: object,
+    app: object,  # noqa: ARG001
+    what: object,  # noqa: ARG001
+    name: object,  # noqa: ARG001
+    obj: object,  # noqa: ARG001
+    opts: object,  # noqa: ARG001
     sig: str,
     ret: str,
 ) -> tuple[str, str]:

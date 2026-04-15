@@ -1,8 +1,4 @@
 use polars_core::prelude::*;
-#[cfg(feature = "array_to_struct")]
-use polars_ops::chunked_array::array::{
-    ArrToStructNameGenerator, ToStruct, arr_default_struct_name_gen,
-};
 
 use crate::dsl::function_expr::ArrayFunction;
 use crate::prelude::*;
@@ -47,6 +43,12 @@ impl ArrayNameSpace {
             .map_unary(FunctionExpr::ArrayExpr(ArrayFunction::Var(ddof)))
     }
 
+    /// Compute the mean of the items in every subarray.
+    pub fn mean(self) -> Expr {
+        self.0
+            .map_unary(FunctionExpr::ArrayExpr(ArrayFunction::Mean))
+    }
+
     /// Compute the median of the items in every subarray.
     pub fn median(self) -> Expr {
         self.0
@@ -74,20 +76,6 @@ impl ArrayNameSpace {
     pub fn to_list(self) -> Expr {
         self.0
             .map_unary(FunctionExpr::ArrayExpr(ArrayFunction::ToList))
-    }
-
-    #[cfg(feature = "array_any_all")]
-    /// Evaluate whether all boolean values are true for every subarray.
-    pub fn all(self) -> Expr {
-        self.0
-            .map_unary(FunctionExpr::ArrayExpr(ArrayFunction::All))
-    }
-
-    #[cfg(feature = "array_any_all")]
-    /// Evaluate whether any boolean value is true for every subarray
-    pub fn any(self) -> Expr {
-        self.0
-            .map_unary(FunctionExpr::ArrayExpr(ArrayFunction::Any))
     }
 
     pub fn sort(self, options: SortOptions) -> Expr {
@@ -147,28 +135,8 @@ impl ArrayNameSpace {
     }
 
     #[cfg(feature = "array_to_struct")]
-    pub fn to_struct(self, name_generator: Option<ArrToStructNameGenerator>) -> PolarsResult<Expr> {
-        Ok(self.0.map_with_fmt_str(
-            move |s| {
-                s.array()?
-                    .to_struct(name_generator.clone())
-                    .map(|s| Some(s.into_column()))
-            },
-            GetOutput::map_dtype(move |dt: &DataType| {
-                let DataType::Array(inner, width) = dt else {
-                    polars_bail!(InvalidOperation: "expected Array type, got: {}", dt)
-                };
-
-                let fields = (0..*width)
-                    .map(|i| {
-                        let name = arr_default_struct_name_gen(i);
-                        Field::new(name, inner.as_ref().clone())
-                    })
-                    .collect();
-                Ok(DataType::Struct(fields))
-            }),
-            "arr.to_struct",
-        ))
+    pub fn to_struct(self, name_generator: Option<DslNameGenerator>) -> Expr {
+        self.0.map_unary(ArrayFunction::ToStruct(name_generator))
     }
 
     /// Slice every subarray.
@@ -209,10 +177,24 @@ impl ArrayNameSpace {
             .map_binary(FunctionExpr::ArrayExpr(ArrayFunction::Shift), n)
     }
     /// Returns a column with a separate row for every array element.
-    pub fn explode(self) -> Expr {
+    pub fn explode(self, options: ExplodeOptions) -> Expr {
         self.0
-            .map_unary(FunctionExpr::ArrayExpr(ArrayFunction::Explode {
-                skip_empty: false,
-            }))
+            .map_unary(FunctionExpr::ArrayExpr(ArrayFunction::Explode(options)))
+    }
+
+    pub fn eval<E: Into<Expr>>(self, other: E, as_list: bool) -> Expr {
+        Expr::Eval {
+            expr: Arc::new(self.0),
+            evaluation: Arc::new(other.into()),
+            variant: EvalVariant::Array { as_list },
+        }
+    }
+
+    pub fn agg<E: Into<Expr>>(self, other: E) -> Expr {
+        Expr::Eval {
+            expr: Arc::new(self.0),
+            evaluation: Arc::new(other.into()),
+            variant: EvalVariant::ArrayAgg,
+        }
     }
 }

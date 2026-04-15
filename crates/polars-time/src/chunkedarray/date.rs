@@ -52,6 +52,14 @@ pub trait DateMethods: AsDate {
         ca.physical().apply_kernel_cast::<Int8Type>(&date_to_month)
     }
 
+    /// Returns the number of days in the month of the underlying NaiveDate
+    /// representation.
+    fn days_in_month(&self) -> Int8Chunked {
+        let ca = self.as_date();
+        ca.physical()
+            .apply_kernel_cast::<Int8Type>(&date_to_days_in_month)
+    }
+
     /// Returns the ISO week number starting from 1.
     /// The return value ranges from 1 to 53. (The last week of year differs by years.)
     fn week(&self) -> Int8Chunked {
@@ -95,7 +103,7 @@ pub trait DateMethods: AsDate {
                 if let (Some(y), Some(m), Some(d)) = (y, m, d) {
                     NaiveDate::from_ymd_opt(y, m as u32, d as u32).map_or_else(
                         // We have an invalid date.
-                        || Err(polars_err!(ComputeError: format!("Invalid date components ({}, {}, {}) supplied", y, m, d))),
+                        || polars_bail!(ComputeError: "Invalid date components ({y}, {m}, {d}) supplied"),
                         // We have a valid date.
                         |date| Ok(Some(date.num_days_from_ce() - EPOCH_DAYS_FROM_CE)),
                     )

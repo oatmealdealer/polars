@@ -48,15 +48,11 @@ pub enum ListFunction {
     NUnique,
     #[cfg(feature = "list_sets")]
     SetOperation(SetOperation),
-    #[cfg(feature = "list_any_all")]
-    Any,
-    #[cfg(feature = "list_any_all")]
-    All,
     Join(bool),
     #[cfg(feature = "dtype-array")]
     ToArray(usize),
     #[cfg(feature = "list_to_struct")]
-    ToStruct(ListToStructArgs),
+    ToStruct(Arc<[PlSmallStr]>),
 }
 
 impl Display for ListFunction {
@@ -110,10 +106,6 @@ impl Display for ListFunction {
             NUnique => "n_unique",
             #[cfg(feature = "list_sets")]
             SetOperation(s) => return write!(f, "list.{s}"),
-            #[cfg(feature = "list_any_all")]
-            Any => "any",
-            #[cfg(feature = "list_any_all")]
-            All => "all",
             Join(_) => "join",
             #[cfg(feature = "dtype-array")]
             ToArray(_) => "to_array",
@@ -121,5 +113,11 @@ impl Display for ListFunction {
             ToStruct(_) => "to_struct",
         };
         write!(f, "list.{name}")
+    }
+}
+
+impl From<ListFunction> for FunctionExpr {
+    fn from(value: ListFunction) -> Self {
+        Self::ListExpr(value)
     }
 }

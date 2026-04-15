@@ -5,6 +5,7 @@ use std::sync::Mutex;
 use arrow::datatypes::ArrowSchemaRef;
 use either::Either;
 use polars_core::prelude::*;
+use polars_error::feature_gated;
 use polars_utils::idx_vec::UnitVec;
 use polars_utils::{format_pl_smallstr, unitvec};
 #[cfg(feature = "serde")]
@@ -68,7 +69,7 @@ impl FileInfo {
         row_estimation: (Option<usize>, usize),
     ) -> Self {
         Self {
-            schema: schema.clone(),
+            schema,
             reader_schema,
             row_estimation,
         }
@@ -87,6 +88,22 @@ impl FileInfo {
                     .unwrap();
             }
         }
+    }
+
+    pub fn iter_reader_schema_names(
+        &self,
+    ) -> Option<impl '_ + ExactSizeIterator<Item = &PlSmallStr>> {
+        let reader_schema = self.reader_schema.as_ref()?;
+
+        let len = match reader_schema {
+            Either::Left(v) => v.len(),
+            Either::Right(v) => v.len(),
+        };
+
+        Some((0..len).map(move |i| match reader_schema {
+            Either::Left(v) => v.get_at_index(i).unwrap().0,
+            Either::Right(v) => v.get_at_index(i).unwrap().0,
+        }))
     }
 }
 
@@ -115,13 +132,13 @@ pub(crate) fn det_join_schema(
             // Get join names.
             let mut join_on_left: PlHashSet<_> = PlHashSet::with_capacity(left_on.len());
             for e in left_on {
-                let field = e.field(schema_left, Context::Default, expr_arena)?;
+                let field = e.field(schema_left, expr_arena)?;
                 join_on_left.insert(field.name);
             }
 
             let mut join_on_right: PlHashSet<_> = PlHashSet::with_capacity(right_on.len());
             for e in right_on {
-                let field = e.field(schema_right, Context::Default, expr_arena)?;
+                let field = e.field(schema_right, expr_arena)?;
                 join_on_right.insert(field.name);
             }
 
@@ -161,74 +178,57 @@ pub(crate) fn det_join_schema(
 
             Ok(Arc::new(new_schema))
         },
-        _how => {
+        how => {
             let mut new_schema = Schema::with_capacity(schema_left.len() + schema_right.len())
                 .hstack(schema_left.iter_fields())?;
 
             let is_coalesced = options.args.should_coalesce();
 
-            let mut _asof_pre_added_rhs_keys: PlHashSet<PlSmallStr> = PlHashSet::new();
-
-            // Handles coalescing of asof-joins.
-            // Asof joins are not equi-joins
-            // so the columns that are joined on, may have different
-            // values so if the right has a different name, it is added to the schema
-            #[cfg(feature = "asof_join")]
-            if matches!(_how, JoinType::AsOf(_)) {
-                for (left_on, right_on) in left_on.iter().zip(right_on) {
-                    let field_left = left_on.field(schema_left, Context::Default, expr_arena)?;
-                    let field_right = right_on.field(schema_right, Context::Default, expr_arena)?;
-
-                    if is_coalesced && field_left.name != field_right.name {
-                        _asof_pre_added_rhs_keys.insert(field_right.name.clone());
-
-                        if schema_left.contains(&field_right.name) {
-                            new_schema.with_column(
-                                _join_suffix_name(&field_right.name, options.args.suffix()),
-                                field_right.dtype,
-                            );
-                        } else {
-                            new_schema.with_column(field_right.name, field_right.dtype);
-                        }
-                    }
-                }
-            }
-
-            let mut join_on_right: PlHashSet<_> = PlHashSet::with_capacity(right_on.len());
+            let mut join_on_right: PlIndexSet<_> = PlIndexSet::with_capacity(right_on.len());
             for e in right_on {
-                let field = e.field(schema_right, Context::Default, expr_arena)?;
+                let field = e.field(schema_right, expr_arena)?;
                 join_on_right.insert(field.name);
             }
 
-            for (name, dtype) in schema_right.iter() {
-                #[cfg(feature = "asof_join")]
-                {
-                    if let JoinType::AsOf(asof_options) = &options.args.how {
-                        // Asof adds keys earlier
-                        if _asof_pre_added_rhs_keys.contains(name) {
-                            continue;
-                        }
+            let mut right_by: PlHashSet<&PlSmallStr> = PlHashSet::default();
+            #[cfg(feature = "asof_join")]
+            if let JoinType::AsOf(asof_options) = &options.args.how {
+                if let Some(v) = &asof_options.right_by {
+                    right_by.extend(v.iter());
+                }
+            }
 
-                        // Asof join by columns are coalesced
-                        if asof_options
-                            .right_by
-                            .as_deref()
-                            .is_some_and(|x| x.contains(name))
-                        {
-                            // Do not add suffix. The column of the left table will be used
-                            continue;
-                        }
-                    }
+            for (name, dtype) in schema_right.iter() {
+                // Asof join by columns are coalesced
+                if right_by.contains(name) {
+                    // Do not add suffix. The column of the left table will be used
+                    continue;
                 }
 
-                if join_on_right.contains(name.as_str()) && is_coalesced {
+                if is_coalesced
+                    && let Some(idx) = join_on_right.get_index_of(name)
+                    && {
+                        let mut need_to_include_column = false;
+
+                        // Handles coalescing of asof-joins.
+                        // Asof joins are not equi-joins
+                        // so the columns that are joined on, may have different
+                        // values so if the right has a different name, it is added to the schema
+                        #[cfg(feature = "asof_join")]
+                        if matches!(how, JoinType::AsOf(_)) {
+                            let field_left = left_on[idx].field(schema_left, expr_arena)?;
+                            need_to_include_column = field_left.name != name;
+                        }
+
+                        !need_to_include_column
+                    }
+                {
                     // Column will be coalesced into an already added LHS column.
                     continue;
                 }
 
                 // For the error message.
                 let mut suffixed = None;
-
                 let (name, dtype) = if schema_left.contains(name) {
                     suffixed = Some(format_pl_smallstr!("{}{}", name, options.args.suffix()));
                     (suffixed.clone().unwrap(), dtype.clone())
@@ -250,16 +250,63 @@ pub(crate) fn det_join_schema(
     }
 }
 
+/// Returns a new `ArrowSchema` that will have Polars-specific metadata attached for e.g. Categorical
+/// and Enum types.
+pub(crate) fn validate_arrow_schema_conversion(
+    input_schema: &Schema,
+    expected_arrow_schema: &ArrowSchema,
+) -> PolarsResult<ArrowSchema> {
+    polars_ensure!(
+        input_schema.len() == expected_arrow_schema.len()
+        && input_schema
+            .iter_names()
+            .zip(expected_arrow_schema.iter_names())
+            .all(|(l, r)| l == r),
+        SchemaMismatch:
+        "schema names in arrow_schema differ: {:?} != arrow schema names: {:?}",
+        input_schema.names_display(),
+        expected_arrow_schema.values_display(),
+    );
+
+    // Put everything into a struct column and convert that to arrow. This way
+    // top-level columns become `ArrowField`s and the metadata is set properly.
+    feature_gated!("dtype-struct", {
+        let pl_struct_series = Series::full_null(
+            PlSmallStr::EMPTY,
+            0,
+            &DataType::Struct(input_schema.iter_fields().collect()),
+        );
+
+        let arrow_array = pl_struct_series.to_arrow_with_field(
+            0,
+            Cow::Owned(ArrowField::new(
+                PlSmallStr::EMPTY,
+                ArrowDataType::Struct(expected_arrow_schema.iter_values().cloned().collect()),
+                false,
+            )),
+            false,
+        )?;
+
+        let ArrowDataType::Struct(fields) = arrow_array.dtype() else {
+            unreachable!()
+        };
+
+        let mut out = ArrowSchema::from_iter(fields.iter().cloned());
+        *out.metadata_mut() = expected_arrow_schema.metadata().clone();
+
+        Ok(out)
+    })
+}
+
 fn join_suffix_duplicate_help_msg(column_name: &str) -> PolarsError {
     polars_err!(
         Duplicate:
         "\
-column with name '{}' already exists
+column with name '{column_name}' already exists
 
 You may want to try:
 - renaming the column prior to joining
-- using the `suffix` parameter to specify a suffix different to the default one ('_right')",
-        column_name
+- using the `suffix` parameter to specify a suffix different to the default one ('_right')"
     )
 }
 
@@ -308,7 +355,12 @@ pub fn get_input(lp_arena: &Arena<IR>, lp_node: Node) -> UnitVec<Node> {
     inputs
 }
 
-pub fn get_schema(lp_arena: &Arena<IR>, lp_node: Node) -> Cow<'_, SchemaRef> {
+/// Retrieves the schema of the first LP input, or that of the `lp_node` if there
+/// are no inputs.
+///
+/// # Panics
+/// Panics if this `lp_node` does not have inputs and is not a `Scan` or `PythonScan`.
+pub fn get_input_schema(lp_arena: &Arena<IR>, lp_node: Node) -> Cow<'_, SchemaRef> {
     let inputs = get_input(lp_arena, lp_node);
     if inputs.is_empty() {
         // Files don't have an input, so we must take their schema.

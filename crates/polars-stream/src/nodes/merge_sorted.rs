@@ -1,20 +1,17 @@
 use std::collections::VecDeque;
-use std::sync::Arc;
 
 use polars_core::prelude::ChunkCompareIneq;
-use polars_core::schema::Schema;
 use polars_ops::frame::_merge_sorted_dfs;
-use polars_utils::pl_str::PlSmallStr;
 
 use crate::DEFAULT_DISTRIBUTOR_BUFFER_SIZE;
-use crate::async_primitives::connector::Receiver;
 use crate::async_primitives::distributor_channel::distributor_channel;
+use crate::async_primitives::wait_group::WaitGroup;
 use crate::morsel::{SourceToken, get_ideal_morsel_size};
 use crate::nodes::compute_node_prelude::*;
 
+/// Performs `merge_sorted` with the last column being regarded as the key column. This key column
+/// is also popped in the send pipe.
 pub struct MergeSortedNode {
-    key_column_idx: usize,
-
     seq: MorselSeq,
 
     starting_nulls: bool,
@@ -25,13 +22,8 @@ pub struct MergeSortedNode {
 }
 
 impl MergeSortedNode {
-    pub fn new(schema: Arc<Schema>, key: PlSmallStr) -> Self {
-        assert!(schema.contains(key.as_str()));
-        let key_column_idx = schema.index_of(key.as_str()).unwrap();
-
+    pub fn new() -> Self {
         Self {
-            key_column_idx,
-
             seq: MorselSeq::default(),
 
             starting_nulls: false,
@@ -48,8 +40,6 @@ impl MergeSortedNode {
 fn find_mergeable(
     left_unmerged: &mut VecDeque<DataFrame>,
     right_unmerged: &mut VecDeque<DataFrame>,
-
-    key_column_idx: usize,
 
     is_first: bool,
     starting_nulls: &mut bool,
@@ -79,8 +69,8 @@ fn find_mergeable(
             (None, None) => return Ok(None),
         };
 
-        let left_key = &left[key_column_idx];
-        let right_key = &right[key_column_idx];
+        let left_key = left.columns().last().unwrap();
+        let right_key = right.columns().last().unwrap();
 
         let left_null_count = left_key.null_count();
         let right_null_count = right_key.null_count();
@@ -145,12 +135,12 @@ fn find_mergeable(
             // @TODO: This is essentially search sorted, but that does not
             // support categoricals at moment.
             let gt_mask = right_key.gt(&left_key_last)?;
-            right_cutoff = gt_mask.downcast_as_array().values().leading_zeros();
+            right_cutoff = gt_mask.first_true_idx().unwrap_or(gt_mask.len());
         } else if left_key_last.gt(&right_key_last)?.all() {
             // @TODO: This is essentially search sorted, but that does not
             // support categoricals at moment.
             let gt_mask = left_key.gt(&right_key_last)?;
-            left_cutoff = gt_mask.downcast_as_array().values().leading_zeros();
+            left_cutoff = gt_mask.first_true_idx().unwrap_or(gt_mask.len());
         }
 
         let left_mergeable: DataFrame;
@@ -158,15 +148,23 @@ fn find_mergeable(
         (left_mergeable, left) = left.split_at(left_cutoff as i64);
         (right_mergeable, right) = right.split_at(right_cutoff as i64);
 
-        if !left.is_empty() {
+        if left.height() > 0 {
             left_unmerged.push_front(left);
         }
-        if !right.is_empty() {
+        if right.height() > 0 {
             right_unmerged.push_front(right);
         }
 
         return Ok(Some((left_mergeable, right_mergeable)));
     }
+}
+
+fn remove_key_column(df: &mut DataFrame) {
+    // SAFETY:
+    // - We only pop so height stays same.
+    // - We only pop so no new name collisions.
+    // - We clear schema afterwards.
+    unsafe { df.columns_mut().pop().unwrap() };
 }
 
 impl ComputeNode for MergeSortedNode {
@@ -238,7 +236,6 @@ impl ComputeNode for MergeSortedNode {
 
         let seq = &mut self.seq;
         let starting_nulls = &mut self.starting_nulls;
-        let key_column_idx = self.key_column_idx;
         let left_unmerged = &mut self.left_unmerged;
         let right_unmerged = &mut self.right_unmerged;
 
@@ -260,6 +257,8 @@ impl ComputeNode for MergeSortedNode {
                                 // Ensure the morsel sequence id stream is monotone non-decreasing.
                                 let seq = morsel.seq().offset_by(morsel_offset);
                                 max_seq = max_seq.max(seq);
+
+                                remove_key_column(morsel.df_mut());
 
                                 morsel.set_seq(seq);
                                 if send.send(morsel).await.is_err() {
@@ -286,21 +285,16 @@ impl ComputeNode for MergeSortedNode {
             // data.
             (left, right) => {
                 async fn buffer_unmerged(
-                    port: &mut Receiver<Morsel>,
+                    port: &mut PortReceiver,
                     unmerged: &mut VecDeque<DataFrame>,
                 ) {
                     // If a stop was requested, we need to buffer the remaining
                     // morsels and trigger a phase transition.
-                    let Ok(morsel) = port.recv().await else {
-                        return;
-                    };
 
-                    // Request the port stop producing morsels.
-                    morsel.source_token().stop();
-
-                    // Buffer all the morsels that were already produced.
-                    unmerged.push_back(morsel.into_df());
                     while let Ok(morsel) = port.recv().await {
+                        // Request the port stop producing morsels.
+                        morsel.source_token().stop();
+                        // Buffer all the morsels that were already produced.
                         unmerged.push_back(morsel.into_df());
                     }
                 }
@@ -324,7 +318,6 @@ impl ComputeNode for MergeSortedNode {
                         while let Some((left_mergeable, right_mergeable)) = find_mergeable(
                             left_unmerged,
                             right_unmerged,
-                            key_column_idx,
                             seq.to_u64() == 0,
                             starting_nulls,
                         )? {
@@ -385,7 +378,6 @@ impl ComputeNode for MergeSortedNode {
                     while let Some((left_mergeable, right_mergeable)) = find_mergeable(
                         left_unmerged,
                         right_unmerged,
-                        key_column_idx,
                         seq.to_u64() == 0,
                         starting_nulls,
                     )? {
@@ -421,7 +413,7 @@ impl ComputeNode for MergeSortedNode {
                             }
                         }
 
-                        // Start passing on the port that is port that is still open.
+                        // Start passing on the port that is still open.
                         if let Some(pass_port) = pass_port {
                             let Ok(mut m) = pass_port.recv().await else {
                                 return Ok(());
@@ -453,24 +445,39 @@ impl ComputeNode for MergeSortedNode {
                 join_handles.extend(dist_recv.into_iter().zip(send).map(|(mut recv, mut send)| {
                     let ideal_morsel_size = get_ideal_morsel_size();
                     scope.spawn_task(TaskPriority::High, async move {
-                        while let Ok((left, right)) = recv.recv().await {
+                        let wait_group = WaitGroup::default();
+                        while let Ok((mut left, mut right)) = recv.recv().await {
                             // When we are flushing the buffer, we will just send one morsel from
                             // the input. We don't want to mess with the source token or wait group
                             // and just pass it on.
-                            if right.is_empty() {
+                            if right.shape_has_zero() {
+                                remove_key_column(left.df_mut());
+
                                 if send.send(left).await.is_err() {
                                     return Ok(());
                                 }
                                 continue;
                             }
 
-                            let (left, seq, source_token, wg) = left.into_inner();
-                            assert!(wg.is_none());
+                            let (mut left, seq, source_token, _) = left.into_inner();
+                            let left_s = left
+                                .columns()
+                                .last()
+                                .unwrap()
+                                .as_materialized_series()
+                                .clone();
+                            let right_s = right
+                                .columns()
+                                .last()
+                                .unwrap()
+                                .as_materialized_series()
+                                .clone();
 
-                            let left_s = left[key_column_idx].as_materialized_series();
-                            let right_s = right[key_column_idx].as_materialized_series();
+                            remove_key_column(&mut left);
+                            remove_key_column(&mut right);
 
-                            let merged = _merge_sorted_dfs(&left, &right, left_s, right_s, false)?;
+                            let merged =
+                                _merge_sorted_dfs(&left, &right, &left_s, &right_s, false)?;
 
                             if ideal_morsel_size > 1 && merged.height() > ideal_morsel_size {
                                 // The merged dataframe will have at most doubled in size from the
@@ -483,16 +490,19 @@ impl ComputeNode for MergeSortedNode {
                                 if send.send(morsel).await.is_err() {
                                     break;
                                 }
-                                let morsel = Morsel::new(m2, seq, source_token.clone());
+                                let mut morsel = Morsel::new(m2, seq, source_token.clone());
+                                morsel.set_consume_token(wait_group.token());
                                 if send.send(morsel).await.is_err() {
                                     break;
                                 }
                             } else {
-                                let morsel = Morsel::new(merged, seq, source_token.clone());
+                                let mut morsel = Morsel::new(merged, seq, source_token.clone());
+                                morsel.set_consume_token(wait_group.token());
                                 if send.send(morsel).await.is_err() {
                                     break;
                                 }
                             }
+                            wait_group.wait().await;
                         }
 
                         Ok(())

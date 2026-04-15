@@ -1,79 +1,43 @@
-#[cfg(feature = "abs")]
-mod abs;
-#[cfg(feature = "arg_where")]
-mod arg_where;
 #[cfg(feature = "dtype-array")]
 mod array;
 mod binary;
 #[cfg(feature = "bitwise")]
 mod bitwise;
 mod boolean;
-mod bounds;
 #[cfg(feature = "business")]
 mod business;
 #[cfg(feature = "dtype-categorical")]
 mod cat;
-#[cfg(feature = "round_series")]
-mod clip;
-#[cfg(feature = "dtype-struct")]
-mod coerce;
-mod concat;
 #[cfg(feature = "cov")]
 mod correlation;
 #[cfg(feature = "cum_agg")]
 mod cum;
-#[cfg(feature = "cutqcut")]
-mod cut;
 #[cfg(feature = "temporal")]
 mod datetime;
-mod dispatch;
-#[cfg(feature = "ewma")]
-mod ewm;
-#[cfg(feature = "ewma_by")]
-mod ewm_by;
-mod fill_null;
+#[cfg(feature = "dtype-extension")]
+mod extension;
 #[cfg(feature = "fused")]
 mod fused;
-#[cfg(feature = "index_of")]
-mod index_of;
 mod list;
-#[cfg(feature = "log")]
-mod log;
-mod nan;
-#[cfg(feature = "peaks")]
-mod peaks;
 #[cfg(feature = "ffi_plugin")]
-mod plugin;
+pub mod plugin;
 mod pow;
 #[cfg(feature = "random")]
 mod random;
 #[cfg(feature = "range")]
 mod range;
-mod repeat;
 #[cfg(feature = "rolling_window")]
 mod rolling;
 #[cfg(feature = "rolling_window_by")]
 mod rolling_by;
-#[cfg(feature = "round_series")]
-mod round;
-#[cfg(feature = "row_hash")]
-mod row_hash;
+mod row_encode;
 pub(super) mod schema;
-#[cfg(feature = "search_sorted")]
-mod search_sorted;
-mod shift_and_fill;
-mod shrink_type;
-#[cfg(feature = "sign")]
-mod sign;
 #[cfg(feature = "strings")]
 mod strings;
 #[cfg(feature = "dtype-struct")]
 mod struct_;
-#[cfg(feature = "temporal")]
-mod temporal;
 #[cfg(feature = "trigonometry")]
 mod trigonometry;
-mod unique;
 
 use std::fmt::{Display, Formatter};
 use std::hash::{Hash, Hasher};
@@ -87,7 +51,6 @@ pub use fused::FusedOperator;
 pub use list::IRListFunction;
 pub use polars_core::datatypes::ReshapeDimension;
 use polars_core::prelude::*;
-use polars_core::series::IsSorted;
 use polars_core::series::ops::NullBehavior;
 use polars_core::utils::SuperTypeFlags;
 #[cfg(feature = "random")]
@@ -104,6 +67,8 @@ pub use self::business::IRBusinessFunction;
 pub use self::cat::IRCategoricalFunction;
 #[cfg(feature = "temporal")]
 pub use self::datetime::IRTemporalFunction;
+#[cfg(feature = "dtype-extension")]
+pub use self::extension::IRExtensionFunction;
 pub use self::pow::IRPowFunction;
 #[cfg(feature = "range")]
 pub use self::range::IRRangeFunction;
@@ -111,8 +76,11 @@ pub use self::range::IRRangeFunction;
 pub use self::rolling::IRRollingFunction;
 #[cfg(feature = "rolling_window_by")]
 pub use self::rolling_by::IRRollingFunctionBy;
+pub use self::row_encode::RowEncodingVariant;
 #[cfg(feature = "strings")]
 pub use self::strings::IRStringFunction;
+#[cfg(all(feature = "strings", feature = "regex", feature = "timezones"))]
+pub use self::strings::TZ_AWARE_RE;
 #[cfg(feature = "dtype-struct")]
 pub use self::struct_::IRStructFunction;
 #[cfg(feature = "trigonometry")]
@@ -128,6 +96,8 @@ pub enum IRFunctionExpr {
     BinaryExpr(IRBinaryFunction),
     #[cfg(feature = "dtype-categorical")]
     Categorical(IRCategoricalFunction),
+    #[cfg(feature = "dtype-extension")]
+    Extension(IRExtensionFunction),
     ListExpr(IRListFunction),
     #[cfg(feature = "strings")]
     StringExpr(IRStringFunction),
@@ -184,12 +154,15 @@ pub enum IRFunctionExpr {
         function_by: IRRollingFunctionBy,
         options: RollingOptionsDynamicWindow,
     },
+    Rechunk,
     ShiftAndFill,
     Shift,
     DropNans,
     DropNulls,
     #[cfg(feature = "mode")]
-    Mode,
+    Mode {
+        maintain_order: bool,
+    },
     #[cfg(feature = "moment")]
     Skew(bool),
     #[cfg(feature = "moment")]
@@ -199,6 +172,15 @@ pub enum IRFunctionExpr {
     #[cfg(feature = "repeat_by")]
     RepeatBy,
     ArgUnique,
+    ArgMin,
+    ArgMax,
+    ArgSort {
+        descending: bool,
+        nulls_last: bool,
+    },
+    MinBy,
+    MaxBy,
+    Product,
     #[cfg(feature = "rank")]
     Rank {
         options: RankOptions,
@@ -253,7 +235,6 @@ pub enum IRFunctionExpr {
     #[cfg(feature = "approx_unique")]
     ApproxNUnique,
     Coalesce,
-    ShrinkType,
     #[cfg(feature = "diff")]
     Diff(NullBehavior),
     #[cfg(feature = "pct_change")]
@@ -268,14 +249,12 @@ pub enum IRFunctionExpr {
         normalize: bool,
     },
     #[cfg(feature = "log")]
-    Log {
-        base: f64,
-    },
+    Log,
     #[cfg(feature = "log")]
     Log1p,
     #[cfg(feature = "log")]
     Exp,
-    Unique(bool),
+    Unique(/* maintain_order */ bool),
     #[cfg(feature = "round_series")]
     Round {
         decimals: u32,
@@ -286,14 +265,18 @@ pub enum IRFunctionExpr {
         digits: i32,
     },
     #[cfg(feature = "round_series")]
+    Truncate {
+        decimals: u32,
+    },
+    #[cfg(feature = "round_series")]
     Floor,
     #[cfg(feature = "round_series")]
     Ceil,
-    UpperBound,
-    LowerBound,
     #[cfg(feature = "fused")]
     Fused(fused::FusedOperator),
-    ConcatExpr(bool),
+    ConcatExpr {
+        rechunk: bool,
+    },
     #[cfg(feature = "cov")]
     Correlation {
         method: correlation::IRCorrelationMethod,
@@ -327,7 +310,7 @@ pub enum IRFunctionExpr {
         method: IRRandomMethod,
         seed: Option<u64>,
     },
-    SetSortedFlag(IsSorted),
+    SetSortedFlag(AExprSorted),
     #[cfg(feature = "ffi_plugin")]
     /// Creating this node is unsafe
     /// This will lead to calls over FFI.
@@ -340,6 +323,31 @@ pub enum IRFunctionExpr {
         /// Pickle serialized keyword arguments.
         kwargs: Arc<[u8]>,
     },
+
+    FoldHorizontal {
+        callback: PlanCallback<(Series, Series), Series>,
+        returns_scalar: bool,
+        return_dtype: Option<DataType>,
+    },
+    ReduceHorizontal {
+        callback: PlanCallback<(Series, Series), Series>,
+        returns_scalar: bool,
+        return_dtype: Option<DataType>,
+    },
+    #[cfg(feature = "dtype-struct")]
+    CumReduceHorizontal {
+        callback: PlanCallback<(Series, Series), Series>,
+        returns_scalar: bool,
+        return_dtype: Option<DataType>,
+    },
+    #[cfg(feature = "dtype-struct")]
+    CumFoldHorizontal {
+        callback: PlanCallback<(Series, Series), Series>,
+        returns_scalar: bool,
+        return_dtype: Option<DataType>,
+        include_init: bool,
+    },
+
     MaxHorizontal,
     MinHorizontal,
     SumHorizontal {
@@ -375,8 +383,15 @@ pub enum IRFunctionExpr {
         offset: usize,
     },
     #[cfg(feature = "reinterpret")]
-    Reinterpret(bool),
+    Reinterpret(DataType),
     ExtendConstant,
+
+    RowEncode(Vec<DataType>, RowEncodingVariant),
+    #[cfg(feature = "dtype-struct")]
+    RowDecode(Vec<Field>, RowEncodingVariant),
+    DynamicPred {
+        pred: DynamicPredWeakRef,
+    },
 }
 
 impl Hash for IRFunctionExpr {
@@ -390,6 +405,8 @@ impl Hash for IRFunctionExpr {
             BinaryExpr(f) => f.hash(state),
             #[cfg(feature = "dtype-categorical")]
             Categorical(f) => f.hash(state),
+            #[cfg(feature = "dtype-extension")]
+            Extension(f) => f.hash(state),
             ListExpr(f) => f.hash(state),
             #[cfg(feature = "strings")]
             StringExpr(f) => f.hash(state),
@@ -439,18 +456,60 @@ impl Hash for IRFunctionExpr {
                 lib.hash(state);
                 symbol.hash(state);
             },
-            MaxHorizontal
-            | MinHorizontal
-            | SumHorizontal { .. }
-            | MeanHorizontal { .. }
-            | DropNans
-            | DropNulls
-            | Reverse
-            | ArgUnique
-            | Shift
-            | ShiftAndFill => {},
+
+            FoldHorizontal {
+                callback,
+                returns_scalar,
+                return_dtype,
+            }
+            | ReduceHorizontal {
+                callback,
+                returns_scalar,
+                return_dtype,
+            } => {
+                callback.hash(state);
+                returns_scalar.hash(state);
+                return_dtype.hash(state);
+            },
+            #[cfg(feature = "dtype-struct")]
+            CumReduceHorizontal {
+                callback,
+                returns_scalar,
+                return_dtype,
+            } => {
+                callback.hash(state);
+                returns_scalar.hash(state);
+                return_dtype.hash(state);
+            },
+            #[cfg(feature = "dtype-struct")]
+            CumFoldHorizontal {
+                callback,
+                returns_scalar,
+                return_dtype,
+                include_init,
+            } => {
+                callback.hash(state);
+                returns_scalar.hash(state);
+                return_dtype.hash(state);
+                include_init.hash(state);
+            },
+
+            SumHorizontal { ignore_nulls } | MeanHorizontal { ignore_nulls } => {
+                ignore_nulls.hash(state)
+            },
+            MaxHorizontal | MinHorizontal | DropNans | DropNulls | Reverse | ArgUnique | ArgMin
+            | ArgMax | Product | Shift | ShiftAndFill | Rechunk | MinBy | MaxBy => {},
+            ArgSort {
+                descending,
+                nulls_last,
+            } => {
+                descending.hash(state);
+                nulls_last.hash(state);
+            },
             #[cfg(feature = "mode")]
-            Mode => {},
+            Mode { maintain_order } => {
+                maintain_order.hash(state);
+            },
             #[cfg(feature = "abs")]
             Abs => {},
             Negate => {},
@@ -526,7 +585,6 @@ impl Hash for IRFunctionExpr {
             #[cfg(feature = "approx_unique")]
             ApproxNUnique => {},
             Coalesce => {},
-            ShrinkType => {},
             #[cfg(feature = "pct_change")]
             PctChange => {},
             #[cfg(feature = "log")]
@@ -535,7 +593,7 @@ impl Hash for IRFunctionExpr {
                 normalize.hash(state);
             },
             #[cfg(feature = "log")]
-            Log { base } => base.to_bits().hash(state),
+            Log => {},
             #[cfg(feature = "log")]
             Log1p => {},
             #[cfg(feature = "log")]
@@ -549,12 +607,12 @@ impl Hash for IRFunctionExpr {
             #[cfg(feature = "round_series")]
             IRFunctionExpr::RoundSF { digits } => digits.hash(state),
             #[cfg(feature = "round_series")]
+            Truncate { decimals } => decimals.hash(state),
+            #[cfg(feature = "round_series")]
             IRFunctionExpr::Floor => {},
             #[cfg(feature = "round_series")]
             Ceil => {},
-            UpperBound => {},
-            LowerBound => {},
-            ConcatExpr(a) => a.hash(state),
+            ConcatExpr { rechunk } => rechunk.hash(state),
             #[cfg(feature = "peaks")]
             PeakMin => {},
             #[cfg(feature = "peaks")]
@@ -622,10 +680,23 @@ impl Hash for IRFunctionExpr {
             FillNullWithStrategy(strategy) => strategy.hash(state),
             GatherEvery { n, offset } => (n, offset).hash(state),
             #[cfg(feature = "reinterpret")]
-            Reinterpret(signed) => signed.hash(state),
+            Reinterpret(dtype) => dtype.hash(state),
             ExtendConstant => {},
             #[cfg(feature = "top_k")]
             TopKBy { descending } => descending.hash(state),
+
+            RowEncode(dts, variants) => {
+                dts.hash(state);
+                variants.hash(state);
+            },
+            #[cfg(feature = "dtype-struct")]
+            RowDecode(fs, variants) => {
+                fs.hash(state);
+                variants.hash(state);
+            },
+            DynamicPred { pred } => {
+                pred.id().hash(state);
+            },
         }
     }
 }
@@ -640,6 +711,8 @@ impl Display for IRFunctionExpr {
             BinaryExpr(func) => return write!(f, "{func}"),
             #[cfg(feature = "dtype-categorical")]
             Categorical(func) => return write!(f, "{func}"),
+            #[cfg(feature = "dtype-extension")]
+            Extension(func) => return write!(f, "{func}"),
             ListExpr(func) => return write!(f, "{func}"),
             #[cfg(feature = "strings")]
             StringExpr(func) => return write!(f, "{func}"),
@@ -680,16 +753,29 @@ impl Display for IRFunctionExpr {
             RollingExpr { function, .. } => return write!(f, "{function}"),
             #[cfg(feature = "rolling_window_by")]
             RollingExprBy { function_by, .. } => return write!(f, "{function_by}"),
+            Rechunk => "rechunk",
             ShiftAndFill => "shift_and_fill",
             DropNans => "drop_nans",
             DropNulls => "drop_nulls",
             #[cfg(feature = "mode")]
-            Mode => "mode",
+            Mode { maintain_order } => {
+                if *maintain_order {
+                    "mode_stable"
+                } else {
+                    "mode"
+                }
+            },
             #[cfg(feature = "moment")]
             Skew(_) => "skew",
             #[cfg(feature = "moment")]
             Kurtosis(..) => "kurtosis",
             ArgUnique => "arg_unique",
+            ArgMin => "arg_min",
+            ArgMax => "arg_max",
+            ArgSort { .. } => "arg_sort",
+            MinBy => "min_by",
+            MaxBy => "max_by",
+            Product => "product",
             Repeat => "repeat",
             #[cfg(feature = "rank")]
             Rank { .. } => "rank",
@@ -731,7 +817,6 @@ impl Display for IRFunctionExpr {
             #[cfg(feature = "approx_unique")]
             ApproxNUnique => "approx_n_unique",
             Coalesce => "coalesce",
-            ShrinkType => "shrink_dtype",
             #[cfg(feature = "diff")]
             Diff(_) => "diff",
             #[cfg(feature = "pct_change")]
@@ -743,7 +828,7 @@ impl Display for IRFunctionExpr {
             #[cfg(feature = "log")]
             Entropy { .. } => "entropy",
             #[cfg(feature = "log")]
-            Log { .. } => "log",
+            Log => "log",
             #[cfg(feature = "log")]
             Log1p => "log1p",
             #[cfg(feature = "log")]
@@ -760,14 +845,14 @@ impl Display for IRFunctionExpr {
             #[cfg(feature = "round_series")]
             RoundSF { .. } => "round_sig_figs",
             #[cfg(feature = "round_series")]
+            Truncate { .. } => "truncate",
+            #[cfg(feature = "round_series")]
             Floor => "floor",
             #[cfg(feature = "round_series")]
             Ceil => "ceil",
-            UpperBound => "upper_bound",
-            LowerBound => "lower_bound",
             #[cfg(feature = "fused")]
             Fused(fused) => return Display::fmt(fused, f),
-            ConcatExpr(_) => "concat_expr",
+            ConcatExpr { .. } => "concat_expr",
             #[cfg(feature = "cov")]
             Correlation { method, .. } => return Display::fmt(method, f),
             #[cfg(feature = "peaks")]
@@ -792,6 +877,14 @@ impl Display for IRFunctionExpr {
             SetSortedFlag(_) => "set_sorted",
             #[cfg(feature = "ffi_plugin")]
             FfiPlugin { lib, symbol, .. } => return write!(f, "{lib}:{symbol}"),
+
+            FoldHorizontal { .. } => "fold",
+            ReduceHorizontal { .. } => "reduce",
+            #[cfg(feature = "dtype-struct")]
+            CumReduceHorizontal { .. } => "cum_reduce",
+            #[cfg(feature = "dtype-struct")]
+            CumFoldHorizontal { .. } => "cum_fold",
+
             MaxHorizontal => "max_horizontal",
             MinHorizontal => "min_horizontal",
             SumHorizontal { .. } => "sum_horizontal",
@@ -815,6 +908,11 @@ impl Display for IRFunctionExpr {
             #[cfg(feature = "reinterpret")]
             Reinterpret(_) => "reinterpret",
             ExtendConstant => "extend_constant",
+
+            RowEncode(..) => "row_encode",
+            #[cfg(feature = "dtype-struct")]
+            RowDecode(..) => "row_decode",
+            DynamicPred { .. } => "dynamic_predicate",
         };
         write!(f, "{s}")
     }
@@ -842,7 +940,7 @@ macro_rules! wrap {
 macro_rules! map_as_slice {
     ($func:path) => {{
         let f = move |s: &mut [Column]| {
-            $func(s).map(Some)
+            $func(s)
         };
 
         SpecialEq::new(Arc::new(f))
@@ -850,7 +948,7 @@ macro_rules! map_as_slice {
 
     ($func:path, $($args:expr),*) => {{
         let f = move |s: &mut [Column]| {
-            $func(s, $($args),*).map(Some)
+            $func(s, $($args),*)
         };
 
         SpecialEq::new(Arc::new(f))
@@ -864,7 +962,7 @@ macro_rules! map_owned {
     ($func:path) => {{
         let f = move |c: &mut [Column]| {
             let c = std::mem::take(&mut c[0]);
-            $func(c).map(Some)
+            $func(c)
         };
 
         SpecialEq::new(Arc::new(f))
@@ -873,7 +971,7 @@ macro_rules! map_owned {
     ($func:path, $($args:expr),*) => {{
         let f = move |c: &mut [Column]| {
             let c = std::mem::take(&mut c[0]);
-            $func(c, $($args),*).map(Some)
+            $func(c, $($args),*)
         };
 
         SpecialEq::new(Arc::new(f))
@@ -886,7 +984,7 @@ macro_rules! map {
     ($func:path) => {{
         let f = move |c: &mut [Column]| {
             let c = &c[0];
-            $func(c).map(Some)
+            $func(c)
         };
 
         SpecialEq::new(Arc::new(f))
@@ -895,348 +993,11 @@ macro_rules! map {
     ($func:path, $($args:expr),*) => {{
         let f = move |c: &mut [Column]| {
             let c = &c[0];
-            $func(c, $($args),*).map(Some)
+            $func(c, $($args),*)
         };
 
         SpecialEq::new(Arc::new(f))
     }};
-}
-
-impl From<IRFunctionExpr> for SpecialEq<Arc<dyn ColumnsUdf>> {
-    fn from(func: IRFunctionExpr) -> Self {
-        use IRFunctionExpr::*;
-        match func {
-            // Namespaces
-            #[cfg(feature = "dtype-array")]
-            ArrayExpr(func) => func.into(),
-            BinaryExpr(func) => func.into(),
-            #[cfg(feature = "dtype-categorical")]
-            Categorical(func) => func.into(),
-            ListExpr(func) => func.into(),
-            #[cfg(feature = "strings")]
-            StringExpr(func) => func.into(),
-            #[cfg(feature = "dtype-struct")]
-            StructExpr(func) => func.into(),
-            #[cfg(feature = "temporal")]
-            TemporalExpr(func) => func.into(),
-            #[cfg(feature = "bitwise")]
-            Bitwise(func) => func.into(),
-
-            // Other expressions
-            Boolean(func) => func.into(),
-            #[cfg(feature = "business")]
-            Business(func) => func.into(),
-            #[cfg(feature = "abs")]
-            Abs => map!(abs::abs),
-            Negate => map!(dispatch::negate),
-            NullCount => {
-                let f = |s: &mut [Column]| {
-                    let s = &s[0];
-                    Ok(Some(Column::new(
-                        s.name().clone(),
-                        [s.null_count() as IdxSize],
-                    )))
-                };
-                wrap!(f)
-            },
-            Pow(func) => match func {
-                IRPowFunction::Generic => wrap!(pow::pow),
-                IRPowFunction::Sqrt => map!(pow::sqrt),
-                IRPowFunction::Cbrt => map!(pow::cbrt),
-            },
-            #[cfg(feature = "row_hash")]
-            Hash(k0, k1, k2, k3) => {
-                map!(row_hash::row_hash, k0, k1, k2, k3)
-            },
-            #[cfg(feature = "arg_where")]
-            ArgWhere => {
-                wrap!(arg_where::arg_where)
-            },
-            #[cfg(feature = "index_of")]
-            IndexOf => {
-                map_as_slice!(index_of::index_of)
-            },
-            #[cfg(feature = "search_sorted")]
-            SearchSorted { side, descending } => {
-                map_as_slice!(search_sorted::search_sorted_impl, side, descending)
-            },
-            #[cfg(feature = "range")]
-            Range(func) => func.into(),
-
-            #[cfg(feature = "trigonometry")]
-            Trigonometry(trig_function) => {
-                map!(trigonometry::apply_trigonometric_function, trig_function)
-            },
-            #[cfg(feature = "trigonometry")]
-            Atan2 => {
-                wrap!(trigonometry::apply_arctan2)
-            },
-
-            #[cfg(feature = "sign")]
-            Sign => {
-                map!(sign::sign)
-            },
-            FillNull => {
-                map_as_slice!(fill_null::fill_null)
-            },
-            #[cfg(feature = "rolling_window")]
-            RollingExpr { function, options } => {
-                use IRRollingFunction::*;
-                match function {
-                    Min => map!(rolling::rolling_min, options.clone()),
-                    Max => map!(rolling::rolling_max, options.clone()),
-                    Mean => map!(rolling::rolling_mean, options.clone()),
-                    Sum => map!(rolling::rolling_sum, options.clone()),
-                    Quantile => map!(rolling::rolling_quantile, options.clone()),
-                    Var => map!(rolling::rolling_var, options.clone()),
-                    Std => map!(rolling::rolling_std, options.clone()),
-                    #[cfg(feature = "moment")]
-                    Skew => map!(rolling::rolling_skew, options.clone()),
-                    #[cfg(feature = "moment")]
-                    Kurtosis => map!(rolling::rolling_kurtosis, options.clone()),
-                    #[cfg(feature = "cov")]
-                    CorrCov {
-                        corr_cov_options,
-                        is_corr,
-                    } => {
-                        map_as_slice!(
-                            rolling::rolling_corr_cov,
-                            options.clone(),
-                            corr_cov_options,
-                            is_corr
-                        )
-                    },
-                }
-            },
-            #[cfg(feature = "rolling_window_by")]
-            RollingExprBy {
-                function_by,
-                options,
-            } => {
-                use IRRollingFunctionBy::*;
-                match function_by {
-                    MinBy => map_as_slice!(rolling_by::rolling_min_by, options.clone()),
-                    MaxBy => map_as_slice!(rolling_by::rolling_max_by, options.clone()),
-                    MeanBy => map_as_slice!(rolling_by::rolling_mean_by, options.clone()),
-                    SumBy => map_as_slice!(rolling_by::rolling_sum_by, options.clone()),
-                    QuantileBy => {
-                        map_as_slice!(rolling_by::rolling_quantile_by, options.clone())
-                    },
-                    VarBy => map_as_slice!(rolling_by::rolling_var_by, options.clone()),
-                    StdBy => map_as_slice!(rolling_by::rolling_std_by, options.clone()),
-                }
-            },
-            #[cfg(feature = "hist")]
-            Hist {
-                bin_count,
-                include_category,
-                include_breakpoint,
-            } => {
-                map_as_slice!(
-                    dispatch::hist,
-                    bin_count,
-                    include_category,
-                    include_breakpoint
-                )
-            },
-            ShiftAndFill => {
-                map_as_slice!(shift_and_fill::shift_and_fill)
-            },
-            DropNans => map_owned!(nan::drop_nans),
-            DropNulls => map!(dispatch::drop_nulls),
-            #[cfg(feature = "round_series")]
-            Clip { has_min, has_max } => {
-                map_as_slice!(clip::clip, has_min, has_max)
-            },
-            #[cfg(feature = "mode")]
-            Mode => map!(dispatch::mode),
-            #[cfg(feature = "moment")]
-            Skew(bias) => map!(dispatch::skew, bias),
-            #[cfg(feature = "moment")]
-            Kurtosis(fisher, bias) => map!(dispatch::kurtosis, fisher, bias),
-            ArgUnique => map!(dispatch::arg_unique),
-            Repeat => map_as_slice!(repeat::repeat),
-            #[cfg(feature = "rank")]
-            Rank { options, seed } => map!(dispatch::rank, options, seed),
-            #[cfg(feature = "dtype-struct")]
-            AsStruct => {
-                map_as_slice!(coerce::as_struct)
-            },
-            #[cfg(feature = "top_k")]
-            TopK { descending } => {
-                map_as_slice!(top_k, descending)
-            },
-            #[cfg(feature = "top_k")]
-            TopKBy { descending } => map_as_slice!(top_k_by, descending.clone()),
-            Shift => map_as_slice!(shift_and_fill::shift),
-            #[cfg(feature = "cum_agg")]
-            CumCount { reverse } => map!(cum::cum_count, reverse),
-            #[cfg(feature = "cum_agg")]
-            CumSum { reverse } => map!(cum::cum_sum, reverse),
-            #[cfg(feature = "cum_agg")]
-            CumProd { reverse } => map!(cum::cum_prod, reverse),
-            #[cfg(feature = "cum_agg")]
-            CumMin { reverse } => map!(cum::cum_min, reverse),
-            #[cfg(feature = "cum_agg")]
-            CumMax { reverse } => map!(cum::cum_max, reverse),
-            #[cfg(feature = "dtype-struct")]
-            ValueCounts {
-                sort,
-                parallel,
-                name,
-                normalize,
-            } => map!(
-                dispatch::value_counts,
-                sort,
-                parallel,
-                name.clone(),
-                normalize
-            ),
-            #[cfg(feature = "unique_counts")]
-            UniqueCounts => map!(dispatch::unique_counts),
-            Reverse => map!(dispatch::reverse),
-            #[cfg(feature = "approx_unique")]
-            ApproxNUnique => map!(dispatch::approx_n_unique),
-            Coalesce => map_as_slice!(fill_null::coalesce),
-            ShrinkType => map_owned!(shrink_type::shrink),
-            #[cfg(feature = "diff")]
-            Diff(null_behavior) => map_as_slice!(dispatch::diff, null_behavior),
-            #[cfg(feature = "pct_change")]
-            PctChange => map_as_slice!(dispatch::pct_change),
-            #[cfg(feature = "interpolate")]
-            Interpolate(method) => {
-                map!(dispatch::interpolate, method)
-            },
-            #[cfg(feature = "interpolate_by")]
-            InterpolateBy => {
-                map_as_slice!(dispatch::interpolate_by)
-            },
-            #[cfg(feature = "log")]
-            Entropy { base, normalize } => map!(log::entropy, base, normalize),
-            #[cfg(feature = "log")]
-            Log { base } => map!(log::log, base),
-            #[cfg(feature = "log")]
-            Log1p => map!(log::log1p),
-            #[cfg(feature = "log")]
-            Exp => map!(log::exp),
-            Unique(stable) => map!(unique::unique, stable),
-            #[cfg(feature = "round_series")]
-            Round { decimals, mode } => map!(round::round, decimals, mode),
-            #[cfg(feature = "round_series")]
-            RoundSF { digits } => map!(round::round_sig_figs, digits),
-            #[cfg(feature = "round_series")]
-            Floor => map!(round::floor),
-            #[cfg(feature = "round_series")]
-            Ceil => map!(round::ceil),
-            UpperBound => map!(bounds::upper_bound),
-            LowerBound => map!(bounds::lower_bound),
-            #[cfg(feature = "fused")]
-            Fused(op) => map_as_slice!(fused::fused, op),
-            ConcatExpr(rechunk) => map_as_slice!(concat::concat_expr, rechunk),
-            #[cfg(feature = "cov")]
-            Correlation { method } => map_as_slice!(correlation::corr, method),
-            #[cfg(feature = "peaks")]
-            PeakMin => map!(peaks::peak_min),
-            #[cfg(feature = "peaks")]
-            PeakMax => map!(peaks::peak_max),
-            #[cfg(feature = "repeat_by")]
-            RepeatBy => map_as_slice!(dispatch::repeat_by),
-            #[cfg(feature = "dtype-array")]
-            Reshape(dims) => map!(dispatch::reshape, &dims),
-            #[cfg(feature = "cutqcut")]
-            Cut {
-                breaks,
-                labels,
-                left_closed,
-                include_breaks,
-            } => map!(
-                cut::cut,
-                breaks.clone(),
-                labels.clone(),
-                left_closed,
-                include_breaks
-            ),
-            #[cfg(feature = "cutqcut")]
-            QCut {
-                probs,
-                labels,
-                left_closed,
-                allow_duplicates,
-                include_breaks,
-            } => map!(
-                cut::qcut,
-                probs.clone(),
-                labels.clone(),
-                left_closed,
-                allow_duplicates,
-                include_breaks
-            ),
-            #[cfg(feature = "rle")]
-            RLE => map!(rle),
-            #[cfg(feature = "rle")]
-            RLEID => map!(rle_id),
-            ToPhysical => map!(dispatch::to_physical),
-            #[cfg(feature = "random")]
-            Random { method, seed } => {
-                use IRRandomMethod::*;
-                match method {
-                    Shuffle => map!(random::shuffle, seed),
-                    Sample {
-                        is_fraction,
-                        with_replacement,
-                        shuffle,
-                    } => {
-                        if is_fraction {
-                            map_as_slice!(random::sample_frac, with_replacement, shuffle, seed)
-                        } else {
-                            map_as_slice!(random::sample_n, with_replacement, shuffle, seed)
-                        }
-                    },
-                }
-            },
-            SetSortedFlag(sorted) => map!(dispatch::set_sorted_flag, sorted),
-            #[cfg(feature = "ffi_plugin")]
-            FfiPlugin {
-                flags: _,
-                lib,
-                symbol,
-                kwargs,
-            } => unsafe {
-                map_as_slice!(
-                    plugin::call_plugin,
-                    lib.as_ref(),
-                    symbol.as_ref(),
-                    kwargs.as_ref()
-                )
-            },
-            MaxHorizontal => wrap!(dispatch::max_horizontal),
-            MinHorizontal => wrap!(dispatch::min_horizontal),
-            SumHorizontal { ignore_nulls } => wrap!(dispatch::sum_horizontal, ignore_nulls),
-            MeanHorizontal { ignore_nulls } => wrap!(dispatch::mean_horizontal, ignore_nulls),
-            #[cfg(feature = "ewma")]
-            EwmMean { options } => map!(ewm::ewm_mean, options),
-            #[cfg(feature = "ewma_by")]
-            EwmMeanBy { half_life } => map_as_slice!(ewm_by::ewm_mean_by, half_life),
-            #[cfg(feature = "ewma")]
-            EwmStd { options } => map!(ewm::ewm_std, options),
-            #[cfg(feature = "ewma")]
-            EwmVar { options } => map!(ewm::ewm_var, options),
-            #[cfg(feature = "replace")]
-            Replace => {
-                map_as_slice!(dispatch::replace)
-            },
-            #[cfg(feature = "replace")]
-            ReplaceStrict { return_dtype } => {
-                map_as_slice!(dispatch::replace_strict, return_dtype.clone())
-            },
-
-            FillNullWithStrategy(strategy) => map!(dispatch::fill_null_with_strategy, strategy),
-            GatherEvery { n, offset } => map!(dispatch::gather_every, n, offset),
-            #[cfg(feature = "reinterpret")]
-            Reinterpret(signed) => map!(dispatch::reinterpret, signed),
-            ExtendConstant => map_as_slice!(dispatch::extend_constant),
-        }
-    }
 }
 
 impl IRFunctionExpr {
@@ -1248,6 +1009,8 @@ impl IRFunctionExpr {
             F::BinaryExpr(e) => e.function_options(),
             #[cfg(feature = "dtype-categorical")]
             F::Categorical(e) => e.function_options(),
+            #[cfg(feature = "dtype-extension")]
+            F::Extension(e) => e.function_options(),
             F::ListExpr(e) => e.function_options(),
             #[cfg(feature = "strings")]
             F::StringExpr(e) => e.function_options(),
@@ -1268,7 +1031,7 @@ impl IRFunctionExpr {
             F::Negate => FunctionOptions::elementwise(),
             #[cfg(feature = "hist")]
             F::Hist { .. } => FunctionOptions::groupwise(),
-            F::NullCount => FunctionOptions::aggregation(),
+            F::NullCount => FunctionOptions::aggregation().flag(FunctionFlags::NON_ORDER_OBSERVING),
             #[cfg(feature = "row_hash")]
             F::Hash(_, _, _, _) => FunctionOptions::elementwise(),
             #[cfg(feature = "arg_where")]
@@ -1291,29 +1054,53 @@ impl IRFunctionExpr {
             F::FillNullWithStrategy(strategy) if strategy.is_elementwise() => {
                 FunctionOptions::elementwise()
             },
-            F::FillNullWithStrategy(_) => FunctionOptions::groupwise(),
+            F::FillNullWithStrategy(_) => FunctionOptions::length_preserving(),
             #[cfg(feature = "rolling_window")]
             F::RollingExpr { .. } => FunctionOptions::length_preserving(),
             #[cfg(feature = "rolling_window_by")]
             F::RollingExprBy { .. } => FunctionOptions::length_preserving(),
+            F::Rechunk => FunctionOptions::length_preserving(),
             F::ShiftAndFill => FunctionOptions::length_preserving(),
             F::Shift => FunctionOptions::length_preserving(),
-            F::DropNans => FunctionOptions::row_separable(),
+            F::DropNans => {
+                FunctionOptions::row_separable().flag(FunctionFlags::NON_ORDER_PRODUCING)
+            },
             F::DropNulls => FunctionOptions::row_separable()
-                .with_flags(|f| f | FunctionFlags::ALLOW_EMPTY_INPUTS),
+                .flag(FunctionFlags::ALLOW_EMPTY_INPUTS | FunctionFlags::NON_ORDER_PRODUCING),
             #[cfg(feature = "mode")]
-            F::Mode => FunctionOptions::groupwise(),
+            F::Mode { maintain_order } => FunctionOptions::groupwise().with_flags(|f| {
+                let f = f | FunctionFlags::NON_ORDER_PRODUCING;
+
+                if !*maintain_order {
+                    f | FunctionFlags::NON_ORDER_OBSERVING | FunctionFlags::TERMINATES_INPUT_ORDER
+                } else {
+                    f
+                }
+            }),
             #[cfg(feature = "moment")]
-            F::Skew(_) => FunctionOptions::aggregation(),
+            F::Skew(_) => FunctionOptions::aggregation().flag(FunctionFlags::NON_ORDER_OBSERVING),
             #[cfg(feature = "moment")]
-            F::Kurtosis(_, _) => FunctionOptions::aggregation(),
+            F::Kurtosis(_, _) => {
+                FunctionOptions::aggregation().flag(FunctionFlags::NON_ORDER_OBSERVING)
+            },
             #[cfg(feature = "dtype-array")]
-            F::Reshape(_) => FunctionOptions::groupwise(),
+            F::Reshape(dims) => {
+                if dims.len() == 1 && dims[0] == ReshapeDimension::Infer {
+                    FunctionOptions::row_separable()
+                } else {
+                    FunctionOptions::groupwise()
+                }
+            },
             #[cfg(feature = "repeat_by")]
             F::RepeatBy => FunctionOptions::elementwise(),
             F::ArgUnique => FunctionOptions::groupwise(),
+            F::ArgMin | F::ArgMax => FunctionOptions::aggregation(),
+            F::ArgSort { .. } => FunctionOptions::length_preserving(),
+            F::MinBy | F::MaxBy => FunctionOptions::aggregation(),
+            // TODO: Only decimal product is order-observing, we should get schema here to indicate `NON_ORDER_OBSERVING` for other dtypes.
+            F::Product => FunctionOptions::aggregation(),
             #[cfg(feature = "rank")]
-            F::Rank { .. } => FunctionOptions::groupwise(),
+            F::Rank { .. } => FunctionOptions::length_preserving(),
             F::Repeat => {
                 FunctionOptions::groupwise().with_flags(|f| f | FunctionFlags::ALLOW_RENAME)
             },
@@ -1333,19 +1120,24 @@ impl IRFunctionExpr {
             | F::CumProd { .. }
             | F::CumMin { .. }
             | F::CumMax { .. } => FunctionOptions::length_preserving(),
-            F::Reverse => FunctionOptions::length_preserving(),
+            F::Reverse => FunctionOptions::length_preserving()
+                .with_flags(|f| f | FunctionFlags::NON_ORDER_OBSERVING),
             #[cfg(feature = "dtype-struct")]
-            F::ValueCounts { .. } => {
-                FunctionOptions::groupwise().with_flags(|f| f | FunctionFlags::PASS_NAME_TO_APPLY)
-            },
+            F::ValueCounts { sort, .. } => FunctionOptions::groupwise().with_flags(|mut f| {
+                if !sort {
+                    f |= FunctionFlags::TERMINATES_INPUT_ORDER | FunctionFlags::NON_ORDER_PRODUCING
+                }
+                f | FunctionFlags::PASS_NAME_TO_APPLY | FunctionFlags::NON_ORDER_OBSERVING
+            }),
             #[cfg(feature = "unique_counts")]
             F::UniqueCounts => FunctionOptions::groupwise(),
             #[cfg(feature = "approx_unique")]
-            F::ApproxNUnique => FunctionOptions::aggregation(),
+            F::ApproxNUnique => {
+                FunctionOptions::aggregation().flag(FunctionFlags::NON_ORDER_OBSERVING)
+            },
             F::Coalesce => FunctionOptions::elementwise()
                 .with_flags(|f| f | FunctionFlags::INPUT_WILDCARD_EXPANSION)
                 .with_supertyping(Default::default()),
-            F::ShrinkType => FunctionOptions::length_preserving(),
             #[cfg(feature = "diff")]
             F::Diff(NullBehavior::Drop) => FunctionOptions::groupwise(),
             #[cfg(feature = "diff")]
@@ -1357,18 +1149,27 @@ impl IRFunctionExpr {
             #[cfg(feature = "interpolate_by")]
             F::InterpolateBy => FunctionOptions::length_preserving(),
             #[cfg(feature = "log")]
-            F::Log { .. } | F::Log1p | F::Exp => FunctionOptions::elementwise(),
+            F::Log | F::Log1p | F::Exp => FunctionOptions::elementwise(),
             #[cfg(feature = "log")]
-            F::Entropy { .. } => FunctionOptions::aggregation(),
-            F::Unique(_) => FunctionOptions::groupwise(),
+            F::Entropy { .. } => {
+                FunctionOptions::aggregation().flag(FunctionFlags::NON_ORDER_OBSERVING)
+            },
+            F::Unique(maintain_order) => FunctionOptions::groupwise().with_flags(|f| {
+                let f = f | FunctionFlags::NON_ORDER_PRODUCING;
+
+                if !*maintain_order {
+                    f | FunctionFlags::NON_ORDER_OBSERVING | FunctionFlags::TERMINATES_INPUT_ORDER
+                } else {
+                    f
+                }
+            }),
             #[cfg(feature = "round_series")]
-            F::Round { .. } | F::RoundSF { .. } | F::Floor | F::Ceil => {
+            F::Round { .. } | F::RoundSF { .. } | F::Truncate { .. } | F::Floor | F::Ceil => {
                 FunctionOptions::elementwise()
             },
-            F::UpperBound | F::LowerBound => FunctionOptions::aggregation(),
             #[cfg(feature = "fused")]
             F::Fused(_) => FunctionOptions::elementwise(),
-            F::ConcatExpr(_) => FunctionOptions::groupwise()
+            F::ConcatExpr { .. } => FunctionOptions::groupwise()
                 .with_flags(|f| f | FunctionFlags::INPUT_WILDCARD_EXPANSION)
                 .with_supertyping(Default::default()),
             #[cfg(feature = "cov")]
@@ -1378,7 +1179,11 @@ impl IRFunctionExpr {
             #[cfg(feature = "peaks")]
             F::PeakMin | F::PeakMax => FunctionOptions::length_preserving(),
             #[cfg(feature = "cutqcut")]
-            F::Cut { .. } | F::QCut { .. } => FunctionOptions::length_preserving()
+            F::Cut { .. } => {
+                FunctionOptions::elementwise().with_flags(|f| f | FunctionFlags::PASS_NAME_TO_APPLY)
+            },
+            #[cfg(feature = "cutqcut")]
+            F::QCut { .. } => FunctionOptions::length_preserving()
                 .with_flags(|f| f | FunctionFlags::PASS_NAME_TO_APPLY),
             #[cfg(feature = "rle")]
             F::RLE => FunctionOptions::groupwise(),
@@ -1398,11 +1203,38 @@ impl IRFunctionExpr {
             F::SetSortedFlag(_) => FunctionOptions::elementwise(),
             #[cfg(feature = "ffi_plugin")]
             F::FfiPlugin { flags, .. } => *flags,
-            F::MaxHorizontal | F::MinHorizontal => FunctionOptions::elementwise().with_flags(|f| {
-                f | FunctionFlags::INPUT_WILDCARD_EXPANSION | FunctionFlags::ALLOW_RENAME
-            }),
-            F::MeanHorizontal { .. } | F::SumHorizontal { .. } => FunctionOptions::elementwise()
+            F::MaxHorizontal | F::MinHorizontal => FunctionOptions::elementwise()
+                .with_flags(|f| {
+                    f | FunctionFlags::INPUT_WILDCARD_EXPANSION | FunctionFlags::ALLOW_RENAME
+                })
+                .with_supertyping(
+                    (SuperTypeFlags::default() & !SuperTypeFlags::ALLOW_PRIMITIVE_TO_STRING).into(),
+                ),
+            F::MeanHorizontal { .. } => FunctionOptions::elementwise()
                 .with_flags(|f| f | FunctionFlags::INPUT_WILDCARD_EXPANSION),
+            F::SumHorizontal { .. } => FunctionOptions::elementwise()
+                .with_flags(|f| f | FunctionFlags::INPUT_WILDCARD_EXPANSION)
+                .with_supertyping(Default::default()),
+
+            F::FoldHorizontal { returns_scalar, .. }
+            | F::ReduceHorizontal { returns_scalar, .. } => FunctionOptions::groupwise()
+                .with_flags(|mut f| {
+                    f |= FunctionFlags::INPUT_WILDCARD_EXPANSION;
+                    if *returns_scalar {
+                        f |= FunctionFlags::RETURNS_SCALAR;
+                    }
+                    f
+                }),
+            #[cfg(feature = "dtype-struct")]
+            F::CumFoldHorizontal { returns_scalar, .. }
+            | F::CumReduceHorizontal { returns_scalar, .. } => FunctionOptions::groupwise()
+                .with_flags(|mut f| {
+                    f |= FunctionFlags::INPUT_WILDCARD_EXPANSION;
+                    if *returns_scalar {
+                        f |= FunctionFlags::RETURNS_SCALAR;
+                    }
+                    f
+                }),
             #[cfg(feature = "ewma")]
             F::EwmMean { .. } | F::EwmStd { .. } | F::EwmVar { .. } => {
                 FunctionOptions::length_preserving()
@@ -1417,6 +1249,11 @@ impl IRFunctionExpr {
             #[cfg(feature = "reinterpret")]
             F::Reinterpret(_) => FunctionOptions::elementwise(),
             F::ExtendConstant => FunctionOptions::groupwise(),
+
+            F::RowEncode(..) => FunctionOptions::elementwise(),
+            #[cfg(feature = "dtype-struct")]
+            F::RowDecode(..) => FunctionOptions::elementwise(),
+            F::DynamicPred { .. } => FunctionOptions::elementwise(),
         }
     }
 }
